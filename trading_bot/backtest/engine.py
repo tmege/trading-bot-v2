@@ -73,6 +73,7 @@ class BacktestEngine:
         self._trades: list[BacktestTrade] = []
         self._equity_curve: list[dict] = []
         self._current_idx = 0
+        self._max_dd = 0.0
 
     def run(self, strategy_instance, candles_5m: list[Candle]) -> BacktestResult:
         if not candles_5m:
@@ -112,54 +113,72 @@ class BacktestEngine:
         strategy_instance.on_init(api)
 
         tf_buffer: list[Candle] = []
+        tf_history: list[Candle] = []
         peak_equity = bt_config.initial_balance
+        max_dd = 0.0
+        coin = bt_config.coin
+
+        # Local references for hot loop
+        exchange = self._exchange
+        orders = exchange._orders
+        check_limit = self._check_fills_limit
+        check_trigger = self._check_fills_trigger
 
         for idx, candle in enumerate(candles_5m):
             self._current_idx = idx
             api._bt_time = candle.time_open / 1000.0
 
-            # Pass 1: check limit fills
-            self._check_fills_limit(candle, idx)
-
-            # Pass 2: check trigger fills
-            self._check_fills_trigger(candle, idx)
+            # Pass 1 & 2: check fills (limit then trigger)
+            if orders:
+                check_limit(candle, idx)
+                check_trigger(candle, idx)
 
             # Pass 3: TF aggregation + on_tick
             tf_buffer.append(candle)
             if len(tf_buffer) >= bars_per_tf:
-                tf_candle = self._aggregate_tf(tf_buffer)
+                tf_candle = _aggregate_tf_fast(tf_buffer)
                 tf_buffer = []
 
-                api._bt_candles = self._build_candle_history(candles_5m, idx, bars_per_tf)
+                # Incremental: just append the new TF candle
+                tf_history.append(tf_candle)
+                api._bt_candles = tf_history
 
                 mid = tf_candle.close
-                self._exchange._update_unrealized(bt_config.coin, mid)
+                exchange._update_unrealized(coin, mid)
 
                 try:
-                    strategy_instance.on_tick(bt_config.coin, mid)
+                    strategy_instance.on_tick(coin, mid)
                 except Exception:
                     log.exception("Backtest strategy error in on_tick")
                     break
 
                 # Set placed_at_idx for new orders
-                for order in self._exchange._orders:
+                for order in exchange._orders:
                     if order.placed_at_idx < 0:
                         order.placed_at_idx = idx
 
-            # Update equity curve
-            equity = self._exchange.equity
-            dd = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0
-            peak_equity = max(peak_equity, equity)
-            self._equity_curve.append({
-                "time_ms": candle.time_open,
-                "equity": equity,
-                "drawdown": dd,
-            })
+                # Track equity & DD only at TF boundaries
+                # (unrealized PnL is only fresh here anyway)
+                equity = exchange.equity
+                if equity > peak_equity:
+                    peak_equity = equity
+                dd = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0.0
+                if dd > max_dd:
+                    max_dd = dd
+                self._equity_curve.append({
+                    "time_ms": candle.time_open,
+                    "equity": equity,
+                    "drawdown": dd,
+                })
 
+            # Re-bind in case orders list was replaced by fill checking
+            orders = exchange._orders
+
+        self._max_dd = max_dd
         return self._compile_result()
 
     def _check_fills_limit(self, candle: Candle, idx: int) -> None:
-        to_remove = []
+        to_remove: set[int] = set()
         for order in self._exchange._orders:
             if order.order_type != OrderType.LIMIT:
                 continue
@@ -176,13 +195,16 @@ class BacktestEngine:
 
             if filled:
                 fill = self._exchange._execute_fill(order, order.price)
-                to_remove.append(order.oid)
+                to_remove.add(order.oid)
                 self._record_trade(fill, candle.time_open)
 
-        self._exchange._orders = [o for o in self._exchange._orders if o.oid not in to_remove]
+        if to_remove:
+            self._exchange._orders = [
+                o for o in self._exchange._orders if o.oid not in to_remove
+            ]
 
     def _check_fills_trigger(self, candle: Candle, idx: int) -> None:
-        to_remove = []
+        to_remove: set[int] = set()
         for order in self._exchange._orders:
             if order.order_type != OrderType.TRIGGER:
                 continue
@@ -217,10 +239,13 @@ class BacktestEngine:
                     fill_price += slippage
 
                 fill = self._exchange._execute_fill(order, fill_price)
-                to_remove.append(order.oid)
+                to_remove.add(order.oid)
                 self._record_trade(fill, candle.time_open)
 
-        self._exchange._orders = [o for o in self._exchange._orders if o.oid not in to_remove]
+        if to_remove:
+            self._exchange._orders = [
+                o for o in self._exchange._orders if o.oid not in to_remove
+            ]
 
     def _record_trade(self, fill: Fill, time_ms: int) -> None:
         pnl = fill.closed_pnl.to_float()
@@ -240,34 +265,6 @@ class BacktestEngine:
             strategy.on_fill(fill)
         except Exception:
             log.exception("Backtest strategy error in on_fill")
-
-    def _aggregate_tf(self, buffer: list[Candle]) -> Candle:
-        return Candle(
-            time_open=buffer[0].time_open,
-            time_close=buffer[-1].time_close,
-            open=buffer[0].open,
-            high=max(c.high for c in buffer),
-            low=min(c.low for c in buffer),
-            close=buffer[-1].close,
-            volume=sum(c.volume for c in buffer),
-            n_trades=sum(c.n_trades for c in buffer),
-        )
-
-    def _build_candle_history(
-        self, candles_5m: list[Candle], current_idx: int, bars_per_tf: int
-    ) -> list[Candle]:
-        result = []
-        end = current_idx + 1
-        start = max(0, end - bars_per_tf * 300)
-
-        buffer = []
-        for i in range(start, end):
-            buffer.append(candles_5m[i])
-            if len(buffer) >= bars_per_tf:
-                result.append(self._aggregate_tf(buffer))
-                buffer = []
-
-        return result[-300:]
 
     def _load_funding_rates(self, coin: str) -> list[tuple[int, float]]:
         rows = self._db.fetchall(
@@ -306,8 +303,8 @@ class BacktestEngine:
         result.max_win = max((t.pnl for t in wins), default=0)
         result.max_loss = min((t.pnl for t in losses), default=0)
 
-        if self._equity_curve:
-            result.max_drawdown_pct = max(e["drawdown"] for e in self._equity_curve) * 100
+        # Use pre-computed max DD instead of iterating equity curve
+        result.max_drawdown_pct = self._max_dd * 100
 
         # Sharpe & Sortino
         if len(exit_trades) >= 2:
@@ -325,6 +322,31 @@ class BacktestEngine:
                 result.sortino_ratio = (252 ** 0.5) * mean_r / down_std if down_std > 0 else 0
 
         return result
+
+
+def _aggregate_tf_fast(buffer: list[Candle]) -> Candle:
+    """Aggregate 5m candles into a TF candle — standalone function to avoid method overhead."""
+    hi = buffer[0].high
+    lo = buffer[0].low
+    vol = 0.0
+    trades = 0
+    for c in buffer:
+        if c.high > hi:
+            hi = c.high
+        if c.low < lo:
+            lo = c.low
+        vol += c.volume
+        trades += c.n_trades
+    return Candle(
+        time_open=buffer[0].time_open,
+        time_close=buffer[-1].time_close,
+        open=buffer[0].open,
+        high=hi,
+        low=lo,
+        close=buffer[-1].close,
+        volume=vol,
+        n_trades=trades,
+    )
 
 
 class _BacktestOrderManager:

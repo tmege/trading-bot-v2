@@ -18,7 +18,6 @@ MAX_LEVERAGE = 50
 
 STRATEGIES = [
     {"file": "btc_sniper_1h.py", "coin": "BTC"},
-    {"file": "doge_sniper_relaxed_1h.py", "coin": "DOGE"},
     {"file": "sol_range_breakout_1h.py", "coin": "SOL"},
 ]
 

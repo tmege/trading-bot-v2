@@ -66,7 +66,7 @@
           `<div style="font-size:10px;color:var(--text3);margin-top:4px;">WR/coin: ${Object.entries(s.win_rate_per_coin).map(([c,w]) => `${c}:${w}%`).join(' ')}</div>` : ''}
         <div class="flex gap-8 mt-8">
           <button class="btn btn-sm" onclick="event.stopPropagation();TB._toggleStrategy('${TB.utils.esc(s.name)}')">
-            ${s.status === 'DISABLED' || s.status === 'ERRORED' ? 'Enable' : 'Disable'}
+            ${s.status === 'DISABLED' || s.status === 'ERRORED' ? 'Enable' : (s.status === 'STOPPED' ? 'Disable' : 'Disable')}
           </button>
         </div>
       </div>`;

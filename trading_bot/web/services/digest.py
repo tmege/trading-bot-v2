@@ -30,19 +30,19 @@ _lock = threading.Lock()
 # Disk cache path
 _DISK_CACHE_PATH = Path(__file__).resolve().parents[3] / "data" / "ai_digest.json"
 
-DIGEST_PROMPT = """Voici {article_count} articles crypto recents de {source_count} sources :
+DIGEST_PROMPT = """The following {article_count} recent cryptocurrency articles from {source_count} sources are provided:
 {context}
 
-Produis un digest crypto du jour. Reponds UNIQUEMENT en JSON valide (pas de markdown, pas de texte avant/apres) :
+Produce a daily cryptocurrency digest. Respond ONLY with valid JSON (no markdown, no surrounding text):
 
-{{"points":["point 1 (2-3 phrases max)","point 2",...],"sentiment":"bullish|bearish|neutre","sentiment_reason":"1 phrase","events":["event 1","event 2",...],"trends":["tendance 1","tendance 2"]}}
+{{"points":["point 1 (2-3 sentences max)","point 2",...],"sentiment":"bullish|bearish|neutral","sentiment_reason":"1 sentence","events":["event 1","event 2",...],"trends":["trend 1","trend 2"]}}
 
-Regles :
-- 4 a 6 points, chacun 2-3 phrases MAX
-- sentiment + sentiment_reason obligatoires
-- 3-5 events impactants pour traders
-- 2-3 tendances emergentes
-- Tout en francais"""
+Rules:
+- 4 to 6 points, each 2-3 sentences maximum
+- sentiment and sentiment_reason are mandatory
+- 3-5 events with significant impact for traders
+- 2-3 emerging trends
+- All content in English"""
 
 
 def clear_cache():
@@ -322,7 +322,7 @@ def _generate_digest(feeds: list[dict], model: str) -> dict | None:
         if parsed and parsed.get("points"):
             return {
                 "points": parsed["points"],
-                "sentiment": parsed.get("sentiment", "neutre"),
+                "sentiment": parsed.get("sentiment", "neutral"),
                 "sentiment_reason": parsed.get("sentiment_reason", ""),
                 "events": parsed.get("events", []),
                 "trends": parsed.get("trends", []),

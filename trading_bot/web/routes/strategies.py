@@ -79,6 +79,19 @@ async def get_strategies():
 
     # Engine stopped — show strategies from config
     if _engine.config:
+        import json
+
+        # Load disabled list from DB
+        disabled_names = set()
+        if _engine.db and _engine.db.conn:
+            raw = _engine.db.load_state("__engine__", "state")
+            if raw:
+                try:
+                    state = json.loads(raw)
+                    disabled_names = set(state.get("disabled_strategies", []))
+                except (json.JSONDecodeError, KeyError):
+                    pass
+
         result = []
         for entry in _engine.config.strategies.active:
             name = entry.file.replace(".py", "")
@@ -86,12 +99,13 @@ async def get_strategies():
             total_pnl = 0.0
             if _engine.db and _engine.db.conn:
                 total_pnl = _engine.db.get_total_pnl(name)
+            is_disabled = name in disabled_names
             result.append({
                 "name": name,
                 "file": entry.file,
                 "coins": entry.coins,
                 "role": entry.role or "",
-                "status": "STOPPED",
+                "status": "DISABLED" if is_disabled else "STOPPED",
                 "paper_mode": paper_mode,
                 "trades": 0,
                 "win_rate": None,
@@ -140,14 +154,43 @@ async def toggle_strategy(name: str):
     if not _engine:
         return {"error": "not initialized"}
 
+    # Engine running: toggle in-memory + persist
     for info in _engine._strategies:
         if info.name == name:
             info.disabled = not info.disabled
             if not info.disabled:
                 info.errored = False
+            _engine._save_engine_state()
             return {
                 "status": "disabled" if info.disabled else "enabled",
                 "restart_required": False,
             }
+
+    # Engine stopped: toggle in DB directly so it takes effect on next start
+    if _engine.db and _engine.config:
+        import json
+        strat_name = name.replace(".py", "")
+        known = [e.file.replace(".py", "") for e in _engine.config.strategies.active]
+        if strat_name not in known:
+            return {"error": "strategy not found"}
+
+        raw = _engine.db.load_state("__engine__", "state")
+        state = json.loads(raw) if raw else {}
+        disabled_list = state.get("disabled_strategies", [])
+
+        if strat_name in disabled_list:
+            disabled_list.remove(strat_name)
+            new_status = "enabled"
+        else:
+            disabled_list.append(strat_name)
+            new_status = "disabled"
+
+        state["disabled_strategies"] = disabled_list
+        _engine.db.save_state("__engine__", "state", json.dumps(state))
+
+        return {
+            "status": new_status,
+            "restart_required": False,
+        }
 
     return {"error": "strategy not found"}

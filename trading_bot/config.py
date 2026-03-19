@@ -66,7 +66,6 @@ class SentimentConfig:
     min_confidence: float = 0.5
     weight: float = 0.3
     hard_block_threshold: float = -0.7
-    cryptopanic_token: str = ""
 
 
 @dataclass
@@ -159,7 +158,6 @@ def load_config(config_path: str = "config/bot_config.json") -> BotConfig:
             min_confidence=se.get("min_confidence", 0.5),
             weight=se.get("weight", 0.3),
             hard_block_threshold=se.get("hard_block_threshold", -0.7),
-            cryptopanic_token=se.get("cryptopanic_token", ""),
         )
 
     _load_env(cfg)
@@ -187,18 +185,22 @@ def _load_env(cfg: BotConfig) -> None:
     cfg.private_key = os.getenv("TB_PRIVATE_KEY", "")
     cfg.wallet_address = os.getenv("TB_WALLET_ADDRESS", "")
 
-    if not cfg.sentiment.cryptopanic_token:
-        cfg.sentiment.cryptopanic_token = os.getenv("CRYPTOPANIC_TOKEN", "")
-
 
 def _validate_config(cfg: BotConfig) -> None:
     coin_map: dict[str, str] = {}
     for entry in cfg.strategies.active:
         for coin in entry.coins:
-            if coin in coin_map:
-                raise ValueError(
-                    f"Coin {coin} assigned to both {coin_map[coin]} and {entry.file}"
+            if coin in coin_map and not entry.paper_mode:
+                # Only block live strategies sharing a coin
+                # Paper mode strategies each have their own PaperExchange
+                other = coin_map[coin]
+                other_entry = next(
+                    (e for e in cfg.strategies.active if e.file == other), None
                 )
+                if other_entry and not other_entry.paper_mode:
+                    raise ValueError(
+                        f"Coin {coin} assigned to both {other} and {entry.file} in live mode"
+                    )
             coin_map[coin] = entry.file
 
     if not cfg.mode.paper_trading and not cfg.private_key:

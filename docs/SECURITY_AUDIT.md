@@ -1,89 +1,89 @@
-# Rapport d'Audit de Sécurité — Trading Bot v2
+# Security Audit Report — Trading Bot v2
 
-**Date** : 2026-03-19
-**Périmètre** : Code source complet (`trading_bot/`, `main.py`, `config/`)
-**Type** : Boîte grise (accès au code source)
-**Auditeur** : Agent Pentester Autonome
+**Date**: 2026-03-19
+**Scope**: Complete source code (`trading_bot/`, `main.py`, `config/`)
+**Type**: Grey-box (source code access)
+**Auditor**: Autonomous Pentesting Agent
 
 ---
 
-## Statut des Correctifs
+## Remediation Status
 
-> **Toutes les 13 vulnérabilités ont été corrigées le 2026-03-19.**
+> **All 13 vulnerabilities were remediated on 2026-03-19.**
 
-| # | Vulnérabilité | Sévérité | Statut | Correctif |
+| # | Vulnerability | Severity | Status | Remediation |
 |---|---|---|---|---|
-| V-01 | Absence d'authentification | CRITIQUE | CORRIGÉ | API key auth (header + query param) sur tous endpoints |
-| V-02 | Code exec via backtest | CRITIQUE | CORRIGÉ | Regex stricte `^[a-zA-Z0-9_-]+\.py$` sur filenames |
-| V-03 | Config overwrite sans auth | CRITIQUE | CORRIGÉ | Protégé par V-01 (auth) + validation renforcée |
-| V-04 | startswith prefix confusion | ÉLEVÉE | CORRIGÉ | Remplacé par `Path.is_relative_to()` |
-| V-05 | Pas de validation filename | ÉLEVÉE | CORRIGÉ | Regex stricte dans backtest.py et settings.py |
-| V-06 | Pas de CORS/CSRF | ÉLEVÉE | CORRIGÉ | CORSMiddleware avec `allow_origins=[]` |
-| V-07 | Injection clés config | ÉLEVÉE | CORRIGÉ | Whitelist role (`primary`/`secondary`/`""`) + regex file |
-| V-08 | XSS strategies/backtest/settings | MOYENNE | CORRIGÉ | `TB.utils.esc()` systématique |
-| V-09 | XSS market data | MOYENNE | CORRIGÉ | `TB.utils.esc()` sur phase/sentiment/strategies |
-| V-10 | XSS trades/positions | MOYENNE | CORRIGÉ | `TB.utils.esc()` sur size/side |
-| V-11 | Injection ANSI logs | MOYENNE | CORRIGÉ | Strip ANSI regex avant envoi SSE |
-| V-12 | TOCTTOU files | BASSE | ACCEPTÉ | Risque très faible (accès local requis) |
-| V-13 | Pas de limites connexions | BASSE | CORRIGÉ | Max 10 WS + max 5 SSE |
+| V-01 | Missing authentication | CRITICAL | FIXED | API key auth (header + query param) on all endpoints |
+| V-02 | Code execution via backtest | CRITICAL | FIXED | Strict regex `^[a-zA-Z0-9_-]+\.py$` on filenames |
+| V-03 | Unauthenticated config overwrite | CRITICAL | FIXED | Protected by V-01 (auth) + enhanced validation |
+| V-04 | startswith prefix confusion | HIGH | FIXED | Replaced with `Path.is_relative_to()` |
+| V-05 | Missing filename validation | HIGH | FIXED | Strict regex in backtest.py and settings.py |
+| V-06 | No CORS/CSRF policy | HIGH | FIXED | CORSMiddleware with `allow_origins=[]` |
+| V-07 | Arbitrary config key injection | HIGH | FIXED | Role whitelist (`primary`/`secondary`/`""`) + filename regex |
+| V-08 | XSS in strategies/backtest/settings | MEDIUM | FIXED | Systematic `TB.utils.esc()` |
+| V-09 | XSS in market data | MEDIUM | FIXED | `TB.utils.esc()` on phase/sentiment/strategies |
+| V-10 | XSS in trades/positions | MEDIUM | FIXED | `TB.utils.esc()` on size/side |
+| V-11 | ANSI injection in logs | MEDIUM | FIXED | ANSI regex strip before SSE dispatch |
+| V-12 | TOCTTOU on file reads | LOW | ACCEPTED | Very low risk (requires local access) |
+| V-13 | No connection limits | LOW | FIXED | Max 10 WS + max 5 SSE |
 
 ---
 
-## Résumé Exécutif (original)
+## Executive Summary (Original)
 
-L'application est un bot de trading crypto avec interface desktop (pywebview + FastAPI). L'audit a identifié **13 vulnérabilités** dont **3 critiques**, **4 élevées**, **4 moyennes** et **2 basses**. Les risques les plus graves sont l'absence totale d'authentification sur l'API, la possibilité d'exécution de code arbitraire via le backtest, et la réécriture non protégée de la configuration.
+The application is a cryptocurrency trading bot with a desktop interface (pywebview + FastAPI). The audit identified **13 vulnerabilities**: **3 critical**, **4 high**, **4 medium**, and **2 low**. The most severe risks were the complete absence of API authentication, the possibility of arbitrary code execution via the backtest endpoint, and unprotected configuration overwrite.
 
-| Sévérité | Nombre |
-|----------|--------|
-| CRITIQUE | 3 |
-| ÉLEVÉE   | 4 |
-| MOYENNE  | 4 |
-| BASSE    | 2 |
+| Severity | Count |
+|----------|-------|
+| CRITICAL | 3 |
+| HIGH     | 4 |
+| MEDIUM   | 4 |
+| LOW      | 2 |
 
 ---
 
-## Tableau des Vulnérabilités
+## Vulnerability Table
 
-| # | Vulnérabilité | Sévérité | CVSS | Fichier(s) | Lignes |
+| # | Vulnerability | Severity | CVSS | File(s) | Lines |
 |---|---|---|---|---|---|
-| V-01 | Absence totale d'authentification | **CRITIQUE** | 9.8 | `web/app.py`, tous `routes/*.py` | toutes |
-| V-02 | Exécution de code arbitraire via backtest | **CRITIQUE** | 9.1 | `routes/backtest.py`, `services/backtest_service.py`, `strategy/loader.py` | 36, 127-154, 88-94 |
-| V-03 | Réécriture de configuration sans authentification | **CRITIQUE** | 9.0 | `routes/settings.py` | 55-135, 138-166 |
-| V-04 | Confusion de préfixe path (startswith) | **ÉLEVÉE** | 7.5 | `routes/strategies.py`, `services/backtest_service.py`, `strategy/loader.py` | 95, 130, 33 |
-| V-05 | Absence de validation du nom de fichier strategy | **ÉLEVÉE** | 8.1 | `routes/backtest.py`, `routes/settings.py` | 36, 106 |
-| V-06 | Absence de politique CORS + CSRF | **ÉLEVÉE** | 7.1 | `web/app.py` | — |
-| V-07 | Injection de clés arbitraires dans la config | **ÉLEVÉE** | 7.0 | `routes/settings.py` | 90-119 |
-| V-08 | XSS : données coins/role/file non échappées (innerHTML) | **MOYENNE** | 6.1 | `pages/strategies.js`, `pages/backtest.js`, `pages/settings.js` | multiples |
-| V-09 | XSS : données market/sentiment non échappées | **MOYENNE** | 5.3 | `pages/market.js` | 141, 144, 173 |
-| V-10 | XSS : données trades/positions partiellement non échappées | **MOYENNE** | 4.3 | `pages/dashboard.js` | 182, 209 |
-| V-11 | Injection ANSI dans les logs (xterm.js) | **MOYENNE** | 5.0 | `routes/logs.py`, `pages/dashboard.js` | 70, 298-303 |
-| V-12 | TOCTTOU sur les lectures de fichiers strategy | **BASSE** | 3.1 | `routes/strategies.py` | 94-99 |
-| V-13 | Absence de limites de connexions WebSocket/SSE | **BASSE** | 3.5 | `web/app.py`, `routes/logs.py`, `routes/backtest.py` | — |
+| V-01 | Complete absence of authentication | **CRITICAL** | 9.8 | `web/app.py`, all `routes/*.py` | all |
+| V-02 | Arbitrary code execution via backtest | **CRITICAL** | 9.1 | `routes/backtest.py`, `services/backtest_service.py`, `strategy/loader.py` | 36, 127-154, 88-94 |
+| V-03 | Unauthenticated configuration overwrite | **CRITICAL** | 9.0 | `routes/settings.py` | 55-135, 138-166 |
+| V-04 | Path prefix confusion (startswith) | **HIGH** | 7.5 | `routes/strategies.py`, `services/backtest_service.py`, `strategy/loader.py` | 95, 130, 33 |
+| V-05 | Missing strategy filename validation | **HIGH** | 8.1 | `routes/backtest.py`, `routes/settings.py` | 36, 106 |
+| V-06 | Missing CORS + CSRF policy | **HIGH** | 7.1 | `web/app.py` | — |
+| V-07 | Arbitrary key injection in config | **HIGH** | 7.0 | `routes/settings.py` | 90-119 |
+| V-08 | XSS: unescaped coin/role/file data (innerHTML) | **MEDIUM** | 6.1 | `pages/strategies.js`, `pages/backtest.js`, `pages/settings.js` | multiple |
+| V-09 | XSS: unescaped market/sentiment data | **MEDIUM** | 5.3 | `pages/market.js` | 141, 144, 173 |
+| V-10 | XSS: partially unescaped trade/position data | **MEDIUM** | 4.3 | `pages/dashboard.js` | 182, 209 |
+| V-11 | ANSI injection in logs (xterm.js) | **MEDIUM** | 5.0 | `routes/logs.py`, `pages/dashboard.js` | 70, 298-303 |
+| V-12 | TOCTTOU on strategy file reads | **LOW** | 3.1 | `routes/strategies.py` | 94-99 |
+| V-13 | No WebSocket/SSE connection limits | **LOW** | 3.5 | `web/app.py`, `routes/logs.py`, `routes/backtest.py` | — |
 
 ---
 
-## Détails des Vulnérabilités
+## Vulnerability Details
 
 ---
 
-### V-01 — Absence totale d'authentification [CRITIQUE]
+### V-01 — Complete Absence of Authentication [CRITICAL]
 
-**Description** : Aucun mécanisme d'authentification n'est implémenté. Tous les endpoints REST, WebSocket et SSE sont accessibles sans identification. Aucun middleware, décorateur `Depends()`, header API key, token JWT ou session n'est requis.
+**Description**: No authentication mechanism was implemented. All REST, WebSocket, and SSE endpoints were accessible without identification. No middleware, `Depends()` decorator, API key header, JWT token, or session was required.
 
-**Impact** : Tout processus local (ou toute page web via CSRF) peut :
-- Arrêter le bot (`POST /api/bot/stop`)
-- Basculer en mode LIVE (`PUT /api/settings/mode`)
-- Modifier les paramètres de risque (`PUT /api/settings`)
-- Lire le code source des stratégies (`GET /api/strategies/{name}/code`)
-- Exporter l'historique complet des trades (`GET /api/trades/export`)
-- Accéder au solde et positions (`GET /api/account`)
+**Impact**: Any local process (or any web page via CSRF) could:
+- Stop the bot (`POST /api/bot/stop`)
+- Switch to LIVE mode (`PUT /api/settings/mode`)
+- Modify risk parameters (`PUT /api/settings`)
+- Read strategy source code (`GET /api/strategies/{name}/code`)
+- Export the complete trade history (`GET /api/trades/export`)
+- Access balance and positions (`GET /api/account`)
 
-**Preuve de concept** :
+**Proof of Concept**:
 ```javascript
-// Depuis n'importe quel onglet navigateur sur la même machine :
+// From any browser tab on the same machine:
 fetch('http://127.0.0.1:8089/api/bot/stop', {method: 'POST'})
 
-// Basculer en mode live (trading réel) :
+// Switch to live mode (real trading):
 fetch('http://127.0.0.1:8089/api/settings/mode', {
   method: 'PUT',
   headers: {'Content-Type': 'application/json'},
@@ -91,9 +91,9 @@ fetch('http://127.0.0.1:8089/api/settings/mode', {
 })
 ```
 
-**Résultat** : Exploitable (localhost accessible depuis tout processus local).
+**Result**: Exploitable (localhost accessible from any local process).
 
-**Remédiation** :
+**Remediation**:
 ```python
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
@@ -106,61 +106,61 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
     if not expected or not secrets.compare_digest(api_key, expected):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-# Appliquer à tous les routers :
+# Apply to all routers:
 app.include_router(bot.router, dependencies=[Depends(verify_api_key)])
 ```
 
 ---
 
-### V-02 — Exécution de code arbitraire via backtest [CRITIQUE]
+### V-02 — Arbitrary Code Execution via Backtest [CRITICAL]
 
-**Description** : L'endpoint `POST /api/backtest/run` accepte un nom de fichier strategy depuis le corps JSON (`body.get("strategy", "")`). Ce fichier est chargé et **exécuté** via `importlib.util.spec_from_file_location()` + `spec.loader.exec_module()` dans `loader.py:88-94`. Tout code Python top-level du fichier est exécuté.
+**Description**: The `POST /api/backtest/run` endpoint accepts a strategy filename from the JSON body (`body.get("strategy", "")`). This file is loaded and **executed** via `importlib.util.spec_from_file_location()` + `spec.loader.exec_module()` in `loader.py:88-94`. All top-level Python code in the file is executed.
 
-**Chaîne d'attaque** :
-1. `routes/backtest.py:36` → `strategy_file = body.get("strategy", "")` (contrôlé par l'attaquant)
+**Attack Chain**:
+1. `routes/backtest.py:36` → `strategy_file = body.get("strategy", "")` (attacker-controlled)
 2. `backtest_service.py:127` → `strategy_path = str(Path(strategies_dir).resolve() / run.strategy)`
 3. `backtest_service.py:154` → `instance = loader._load_module(resolved, ...)`
-4. `loader.py:94` → `spec.loader.exec_module(module)` **← EXÉCUTION ARBITRAIRE**
+4. `loader.py:94` → `spec.loader.exec_module(module)` **← ARBITRARY EXECUTION**
 
-La validation path traversal (`startswith`) bloque les `../../` mais tout fichier `.py` **à l'intérieur** du répertoire strategies est exécutable. Combiné avec V-03 (modification config), un attaquant peut :
-1. Modifier le config pour pointer vers un répertoire qu'il contrôle
-2. Placer un fichier `.py` malveillant
-3. Lancer un backtest sur ce fichier
+The path traversal validation (`startswith`) blocks `../../` patterns, but any `.py` file **within** the strategies directory is executable. Combined with V-03 (config modification), an attacker could:
+1. Modify the config to point to an attacker-controlled directory
+2. Place a malicious `.py` file
+3. Launch a backtest targeting that file
 
-**Preuve de concept** :
+**Proof of Concept**:
 ```bash
 curl -X POST http://127.0.0.1:8089/api/backtest/run \
   -H 'Content-Type: application/json' \
   -d '{"strategy": "template.py", "coins": ["BTC"]}'
-# Exécute le fichier template.py — tout fichier .py du répertoire strategies est ciblable
+# Executes template.py — any .py file in the strategies directory is targetable
 ```
 
-**Résultat** : Exploitable. Aucune validation du nom de fichier. Aucun sandboxing.
+**Result**: Exploitable. No filename validation. No sandboxing.
 
-**Remédiation** :
+**Remediation**:
 ```python
 import re
 strategy_file = body.get("strategy", "")
 if not re.match(r'^[a-zA-Z0-9_-]+\.py$', strategy_file):
     return {"error": "invalid strategy filename"}
-# + Valider contre la liste des stratégies réellement configurées
+# + Validate against the list of actually configured strategies
 ```
 
 ---
 
-### V-03 — Réécriture de configuration sans authentification [CRITIQUE]
+### V-03 — Unauthenticated Configuration Overwrite [CRITICAL]
 
-**Description** : `PUT /api/settings` lit le fichier `bot_config.json`, merge les données utilisateur, et le réécrit atomiquement. Aucune authentification. Le champ `file` des stratégies n'est pas validé.
+**Description**: `PUT /api/settings` reads `bot_config.json`, merges user-supplied data, and atomically rewrites the file. No authentication was required. The strategy `file` field was not validated.
 
-**Impact** :
-- Modifier les limites de risque (leverage 50x, perte quotidienne 50%)
-- Injecter des chemins de fichiers strategy arbitraires
-- Basculer paper/live mode
-- Supprimer ou remplacer toutes les stratégies actives
+**Impact**:
+- Modify risk limits (leverage 50x, daily loss 50%)
+- Inject arbitrary strategy file paths
+- Switch between paper and live mode
+- Delete or replace all active strategies
 
-**Preuve de concept** :
+**Proof of Concept**:
 ```bash
-# Maximiser le risque pour vider le compte :
+# Maximize risk to drain the account:
 curl -X PUT http://127.0.0.1:8089/api/settings \
   -H 'Content-Type: application/json' \
   -d '{
@@ -173,51 +173,51 @@ curl -X PUT http://127.0.0.1:8089/api/settings \
   }'
 ```
 
-**Résultat** : Exploitable.
+**Result**: Exploitable.
 
-**Remédiation** : Authentification (V-01) + validation stricte du champ `file` + bornes plus strictes sur les paramètres de risque.
+**Remediation**: Authentication (V-01) + strict `file` field validation + tighter bounds on risk parameters.
 
 ---
 
-### V-04 — Confusion de préfixe path (startswith) [ÉLEVÉE]
+### V-04 — Path Prefix Confusion (startswith) [HIGH]
 
-**Description** : Trois fichiers utilisent le pattern `resolved.startswith(base_dir)` pour valider les chemins de fichiers. Cette approche est vulnérable à la confusion de préfixe :
+**Description**: Three files used the `resolved.startswith(base_dir)` pattern to validate file paths. This approach is vulnerable to prefix confusion:
 
-Si `base_dir = "/app/strategies"`, alors le chemin `/app/strategies_evil/payload.py` passe la validation car `"/app/strategies_evil/payload.py".startswith("/app/strategies")` retourne `True`.
+If `base_dir = "/app/strategies"`, then the path `/app/strategies_evil/payload.py` passes validation because `"/app/strategies_evil/payload.py".startswith("/app/strategies")` returns `True`.
 
-**Fichiers affectés** :
-- `routes/strategies.py:95` — lecture de code strategy
-- `services/backtest_service.py:130` — exécution de backtest
-- `strategy/loader.py:33` — chargement de stratégie
+**Affected Files**:
+- `routes/strategies.py:95` — strategy code reading
+- `services/backtest_service.py:130` — backtest execution
+- `strategy/loader.py:33` — strategy loading
 
-**Preuve de concept** :
+**Proof of Concept**:
 ```python
 base = "/home/user/strategies"
 evil = "/home/user/strategies_evil/rce.py"
 print(evil.startswith(base))  # True — BYPASS!
 ```
 
-**Résultat** : Exploitable si un répertoire adjacent existe avec le même préfixe.
+**Result**: Exploitable if an adjacent directory with the same prefix exists.
 
-**Remédiation** :
+**Remediation**:
 ```python
 # Python 3.9+
 from pathlib import Path
 if not Path(resolved).is_relative_to(Path(base_dir)):
     raise ValueError("Path traversal blocked")
 
-# Alternative compatible :
+# Compatible alternative:
 if not (resolved + "/").startswith(base_dir + "/"):
     raise ValueError("Path traversal blocked")
 ```
 
 ---
 
-### V-05 — Absence de validation du nom de fichier strategy [ÉLEVÉE]
+### V-05 — Missing Strategy Filename Validation [HIGH]
 
-**Description** : Dans `routes/backtest.py:36`, le champ `strategy` du JSON est utilisé directement sans validation de format. Dans `routes/settings.py:106`, le champ `file` des stratégies est également non validé. Cela permet l'injection de séparateurs de chemin, caractères spéciaux, etc.
+**Description**: In `routes/backtest.py:36`, the `strategy` field from the JSON body is used directly without format validation. In `routes/settings.py:106`, the strategy `file` field is likewise unvalidated. This permits injection of path separators, special characters, and other malicious input.
 
-**Remédiation** :
+**Remediation**:
 ```python
 import re
 if not re.match(r'^[a-zA-Z0-9_-]+\.py$', filename):
@@ -226,24 +226,24 @@ if not re.match(r'^[a-zA-Z0-9_-]+\.py$', filename):
 
 ---
 
-### V-06 — Absence de politique CORS + CSRF [ÉLEVÉE]
+### V-06 — Missing CORS + CSRF Policy [HIGH]
 
-**Description** : Aucun middleware CORS n'est configuré dans `app.py`. Les requêtes POST simples (form-encoded) contournent le preflight CORS et peuvent être déclenchées depuis n'importe quel site web.
+**Description**: No CORS middleware was configured in `app.py`. Simple POST requests (form-encoded) bypass the CORS preflight and can be triggered from any website.
 
-**Preuve de concept** :
+**Proof of Concept**:
 ```html
-<!-- Sur un site malveillant visité par l'utilisateur du bot -->
+<!-- On a malicious website visited by the bot user -->
 <form action="http://127.0.0.1:8089/api/bot/stop" method="POST">
   <input type="submit" value="Claim your reward">
 </form>
 ```
 
-**Remédiation** :
+**Remediation**:
 ```python
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[],  # Bloquer toutes les origines externes
+    allow_origins=[],  # Block all external origins
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
@@ -251,70 +251,70 @@ app.add_middleware(
 
 ---
 
-### V-07 — Injection de clés arbitraires dans la config [ÉLEVÉE]
+### V-07 — Arbitrary Key Injection in Config [HIGH]
 
-**Description** : `PUT /api/settings` merge les données utilisateur dans le JSON existant. Bien que seuls `risk` et `strategies` soient traités, le champ `role` et `file` des stratégies n'ont aucune restriction de format, permettant des valeurs inattendues.
+**Description**: `PUT /api/settings` merges user-supplied data into the existing JSON. Although only `risk` and `strategies` are processed, the `role` and `file` fields within strategies had no format restrictions, allowing unexpected values.
 
-**Remédiation** : Valider `role` contre une liste blanche (`primary`, `secondary`, `""`) et `file` avec regex stricte.
-
----
-
-### V-08 — XSS : données non échappées dans innerHTML [MOYENNE]
-
-**Description** : Plusieurs pages frontend utilisent `innerHTML` avec des données serveur sans appeler `TB.utils.esc()`.
-
-**Exemples concrets** :
-
-| Fichier | Ligne | Donnée non échappée |
-|---------|-------|---------------------|
-| `strategies.js` | 48 | `s.role.toUpperCase()` dans badge HTML |
-| `strategies.js` | 58 | `c` (nom de coin) dans badge HTML |
-| `strategies.js` | 90 | `data.file` (nom de fichier) dans innerHTML |
-| `backtest.js` | 134-136 | `c` (coin) dans `<strong>` et `id=""` |
-| `backtest.js` | 179-191 | `c` (coin) dans `<th>` |
-| `settings.js` | 106 | `strat.role.toUpperCase()` dans badge |
-
-**Preuve de concept** : Si un nom de coin dans la DB ou un `role` dans la config contenait `<img src=x onerror=alert(1)>`, le code JavaScript s'exécuterait dans le contexte de l'application.
-
-**Remédiation** : Systématiquement utiliser `TB.utils.esc()` sur toute donnée serveur injectée dans innerHTML.
+**Remediation**: Validate `role` against a whitelist (`primary`, `secondary`, `""`) and `file` with a strict regex.
 
 ---
 
-### V-09 — XSS : données market non échappées [MOYENNE]
+### V-08 — XSS: Unescaped Data in innerHTML [MEDIUM]
 
-**Fichier** : `pages/market.js`
+**Description**: Several frontend pages used `innerHTML` with server-supplied data without calling `TB.utils.esc()`.
 
-| Ligne | Donnée |
-|-------|--------|
-| 141 | `data.phase` dans badge |
+**Specific Examples**:
+
+| File | Line | Unescaped Data |
+|------|------|----------------|
+| `strategies.js` | 48 | `s.role.toUpperCase()` in HTML badge |
+| `strategies.js` | 58 | `c` (coin name) in HTML badge |
+| `strategies.js` | 90 | `data.file` (filename) in innerHTML |
+| `backtest.js` | 134-136 | `c` (coin) in `<strong>` and `id=""` |
+| `backtest.js` | 179-191 | `c` (coin) in `<th>` |
+| `settings.js` | 106 | `strat.role.toUpperCase()` in badge |
+
+**Proof of Concept**: If a coin name in the database or a `role` in the config contained `<img src=x onerror=alert(1)>`, the JavaScript code would execute in the application context.
+
+**Remediation**: Systematically apply `TB.utils.esc()` to all server-supplied data injected into innerHTML.
+
+---
+
+### V-09 — XSS: Unescaped Market Data [MEDIUM]
+
+**File**: `pages/market.js`
+
+| Line | Data |
+|------|------|
+| 141 | `data.phase` in badge |
 | 144 | `data.recommended_strategies.join(', ')` |
-| 173 | `data.sentiment` dans badge |
+| 173 | `data.sentiment` in badge |
 
-**Impact** : Faible — ces données viennent d'APIs internes, mais un empoisonnement de la DB ou du cache les rendrait exploitables.
-
----
-
-### V-10 — XSS : données trades/positions partiellement non échappées [MOYENNE]
-
-**Fichier** : `pages/dashboard.js`
-
-| Ligne | Donnée |
-|-------|--------|
-| 182 | `p.size` dans `<td>` |
-| 209 | `t.side` via `.toUpperCase()` dans badge |
-
-**Impact** : Faible si les données viennent du trading engine, mais le principe de défense en profondeur exige l'échappement.
+**Impact**: Low — this data originates from internal APIs, but database or cache poisoning would render it exploitable.
 
 ---
 
-### V-11 — Injection ANSI dans les logs (xterm.js) [MOYENNE]
+### V-10 — XSS: Partially Unescaped Trade/Position Data [MEDIUM]
 
-**Description** : Les lignes de log sont envoyées brutes au frontend via SSE et rendues dans xterm.js. Aucun filtrage des séquences d'échappement ANSI n'est effectué. xterm.js interprète ces séquences et un attaquant capable d'écrire des entrées dans le log (via les noms de coin, noms de stratégie, etc.) peut :
-- Masquer des lignes de log en écrasant l'affichage (cursor manipulation)
-- Modifier les couleurs pour tromper l'utilisateur
-- Injecter des caractères via `\x1b]0;TITLE\x07` (titre de fenêtre)
+**File**: `pages/dashboard.js`
 
-**Remédiation** :
+| Line | Data |
+|------|------|
+| 182 | `p.size` in `<td>` |
+| 209 | `t.side` via `.toUpperCase()` in badge |
+
+**Impact**: Low if the data originates from the trading engine, but the principle of defense in depth requires escaping.
+
+---
+
+### V-11 — ANSI Injection in Logs (xterm.js) [MEDIUM]
+
+**Description**: Log lines were sent raw to the frontend via SSE and rendered in xterm.js. No ANSI escape sequence filtering was performed. xterm.js interprets these sequences, and an attacker capable of writing log entries (via coin names, strategy names, etc.) could:
+- Hide log lines by overwriting the display (cursor manipulation)
+- Modify colors to deceive the user
+- Inject characters via `\x1b]0;TITLE\x07` (window title)
+
+**Remediation**:
 ```python
 import re
 ANSI_RE = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07')
@@ -323,57 +323,57 @@ clean_line = ANSI_RE.sub('', line)
 
 ---
 
-### V-12 — TOCTTOU sur les lectures de fichiers strategy [BASSE]
+### V-12 — TOCTTOU on Strategy File Reads [LOW]
 
-**Description** : Entre l'appel `Path.resolve()` (validation) et `open()` (lecture) dans `strategies.py:94-99`, un attaquant avec accès au système de fichiers pourrait remplacer le fichier par un lien symbolique. Risque très faible car il nécessite un accès local concurrent.
-
----
-
-### V-13 — Absence de limites de connexions WebSocket/SSE [BASSE]
-
-**Description** : Les endpoints `/ws/live`, `/api/logs/stream` et `/api/backtest/progress/{id}` n'ont aucune limite de connexions simultanées. Un attaquant pourrait ouvrir des milliers de connexions pour épuiser les ressources.
-
-**Remédiation** : Implémenter un compteur de connexions avec limite (ex: max 10 WebSocket, max 5 SSE).
+**Description**: Between the `Path.resolve()` call (validation) and `open()` (reading) in `strategies.py:94-99`, an attacker with file system access could replace the file with a symbolic link. The risk is very low as it requires concurrent local access.
 
 ---
 
-## Éléments Confirmés Sûrs
+### V-13 — No WebSocket/SSE Connection Limits [LOW]
 
-| Vérification | Résultat |
+**Description**: The `/ws/live`, `/api/logs/stream`, and `/api/backtest/progress/{id}` endpoints had no concurrent connection limits. An attacker could open thousands of connections to exhaust resources.
+
+**Remediation**: Implement a connection counter with limits (e.g., max 10 WebSocket, max 5 SSE).
+
+---
+
+## Confirmed Safe Elements
+
+| Check | Result |
 |---|---|
-| Injection SQL | **Sûr** — Toutes les requêtes utilisent des paramètres liés (`?`) |
-| SSRF | **Sûr** — Toutes les URLs externes sont hardcodées |
-| Secrets hardcodés | **Sûr** — Clé privée via env var, effacée après usage |
-| Désérialisation non sécurisée | **Sûr** — Aucun pickle/yaml.load/marshal |
-| msgpack | **Sûr** — Utilisé en sérialisation uniquement (packb, pas unpackb sur input externe) |
-| .gitignore | **Sûr** — `.env`, `data/`, `logs/`, `*.db` correctement exclus |
+| SQL injection | **Safe** — All queries use bound parameters (`?`) |
+| SSRF | **Safe** — All external URLs are hardcoded |
+| Hardcoded secrets | **Safe** — Private key via env var, cleared after use |
+| Insecure deserialization | **Safe** — No pickle/yaml.load/marshal |
+| msgpack | **Safe** — Used for serialization only (packb, not unpackb on external input) |
+| .gitignore | **Safe** — `.env`, `data/`, `logs/`, `*.db` properly excluded |
 
 ---
 
-## Recommandations par Priorité
+## Recommendations by Priority
 
-### Immédiat (Critique — à corriger avant production)
-1. **Ajouter une authentification** par API key sur tous les endpoints (V-01)
-2. **Valider les noms de fichiers strategy** avec regex strict `^[a-zA-Z0-9_-]+\.py$` (V-02, V-05)
-3. **Ajouter un middleware CORS** restrictif (V-06)
-4. **Corriger le path check** `startswith` → `is_relative_to` ou ajout de `/` (V-04)
+### Immediate (Critical — must be fixed before production)
+1. **Add authentication** via API key on all endpoints (V-01)
+2. **Validate strategy filenames** with strict regex `^[a-zA-Z0-9_-]+\.py$` (V-02, V-05)
+3. **Add restrictive CORS middleware** (V-06)
+4. **Fix the path check** `startswith` → `is_relative_to` or append `/` (V-04)
 
-### Court terme (Élevé)
-5. **Restreindre les valeurs de risk** avec des bornes plus strictes (V-03)
-6. **Valider `role` et `file`** dans settings avec liste blanche (V-07)
-7. **Échapper systématiquement** toute donnée dans innerHTML (V-08, V-09, V-10)
+### Short Term (High)
+5. **Restrict risk parameter values** with tighter bounds (V-03)
+6. **Validate `role` and `file`** in settings with a whitelist (V-07)
+7. **Systematically escape** all data in innerHTML (V-08, V-09, V-10)
 
-### Moyen terme (Moyen)
-8. **Filtrer les séquences ANSI** dans le flux de logs (V-11)
-9. **Limiter les connexions** WebSocket et SSE (V-13)
-10. **Sandboxer l'exécution** des fichiers strategy (subprocess avec permissions restreintes)
+### Medium Term (Medium)
+8. **Filter ANSI sequences** in the log stream (V-11)
+9. **Limit concurrent connections** for WebSocket and SSE (V-13)
+10. **Sandbox strategy file execution** (subprocess with restricted permissions)
 
 ---
 
-## Notes Méthodologiques
+## Methodological Notes
 
-- Les tests ont été réalisés exclusivement par analyse statique du code source
-- Aucune requête réseau externe n'a été émise
-- Aucun fichier du projet n'a été modifié
-- Les PoC sont documentés mais non exécutés contre le serveur en production
-- Les hypothèses raisonnables ont été faites pour les cas ambigus (mentionnés dans le rapport)
+- All tests were conducted exclusively through static source code analysis
+- No external network requests were made
+- No project files were modified
+- Proofs of concept are documented but were not executed against the production server
+- Reasonable assumptions were made for ambiguous cases (noted in the report)

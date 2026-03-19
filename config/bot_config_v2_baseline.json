@@ -63,5 +63,6 @@
     "min_confidence": 0.5,
     "weight": 0.3,
     "hard_block_threshold": -0.7
-  }
+  },
+  "_baseline_note": "Portfolio V2 baseline — Sharpe 1.99, $1000->$3549 (3Y), MaxDD 21%, 0% ruine. Ne pas modifier."
 }

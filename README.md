@@ -1,112 +1,110 @@
 # Trading Bot v2
 
-Bot de trading automatise pour les perpetuels crypto sur **Hyperliquid** (DEX). Interface desktop native, multi-strategies avec hot-reload, paper trading, backtesting et analyse de sentiment via Claude AI.
+An automated cryptocurrency trading bot for perpetual contracts on **Hyperliquid** (decentralized exchange). Features a native desktop interface, concurrent multi-strategy execution with hot-reload capability, paper trading, backtesting, and AI-driven sentiment analysis via Claude.
 
-## Fonctionnalites
+## Features
 
-- **Multi-strategies** : execution simultanee de strategies independantes sur differents coins
-- **Hot-reload** : modification des strategies sans redemarrage (rechargement toutes les 5s)
-- **Paper trading** : simulateur complet avec frais realistes (maker 0.015%, taker 0.045%)
-- **Backtesting** : moteur de replay historique avec simulation Monte Carlo
-- **Analyse de sentiment** : Claude AI analyse les news CryptoPanic + Fear & Greed Index
-- **Risk management** : limites de perte journaliere, circuit breaker, controle de levier
-- **50+ indicateurs techniques** : RSI, MACD, Bollinger, Ichimoku, Supertrend, etc.
-- **Interface desktop** : GUI native via pywebview + API FastAPI locale
-- **Persistence** : SQLite (WAL mode) pour trades, candles, etat des strategies
+- **Multi-strategy execution**: Simultaneous operation of independent strategies across distinct assets
+- **Hot-reload**: Strategy modifications take effect without restart (polling interval: 5 seconds)
+- **Paper trading**: Full-fidelity simulator with realistic fee modeling (maker 0.015%, taker 0.045%)
+- **Backtesting**: Historical replay engine with Monte Carlo simulation
+- **Sentiment analysis**: Claude AI evaluates market sentiment via the Fear & Greed Index
+- **Risk management**: Daily loss limits, circuit breaker, and leverage controls
+- **50+ technical indicators**: RSI, MACD, Bollinger Bands, Ichimoku, Supertrend, and others
+- **Desktop interface**: Native GUI via pywebview backed by a local FastAPI server
+- **Persistence**: SQLite (WAL mode) for trades, candles, and strategy state
 
-## Pre-requis
+## Prerequisites
 
 - Python 3.11+
-- Compte Hyperliquid avec cle privee (wallet Ethereum)
-- Cle API Anthropic (optionnel, pour le sentiment)
-- Token CryptoPanic (optionnel, pour les news)
+- Hyperliquid account with a private key (Ethereum wallet)
+- Anthropic API key (optional, for sentiment analysis)
 
 ## Installation
 
 ```bash
-# Cloner le projet
+# Clone the repository
 git clone <repo-url> trading-bot-v2
 cd trading-bot-v2
 
-# Creer l'environnement virtuel
+# Create a virtual environment
 python -m venv .venv
 source .venv/bin/activate
 
-# Installer les dependances
+# Install dependencies
 pip install -r requirements.txt
 
-# Configurer les variables d'environnement
+# Configure environment variables
 cp .env.example .env
-# Editer .env avec vos cles
+# Edit .env with your credentials
 ```
 
 ## Configuration
 
-### Variables d'environnement (`.env`)
+### Environment Variables (`.env`)
 
-| Variable | Requis | Description |
-|----------|--------|-------------|
-| `TB_PRIVATE_KEY` | Oui | Cle privee Ethereum (format `0x...`) pour signer les ordres |
-| `TB_WALLET_ADDRESS` | Oui | Adresse du wallet Hyperliquid |
-| `ANTHROPIC_API_KEY` | Non | Cle API Claude pour l'analyse de sentiment |
-| `CRYPTOPANIC_TOKEN` | Non | Token API CryptoPanic pour le flux de news |
-| `TB_WEB_API_KEY` | Non | Cle API pour l'interface web (auto-generee si absente) |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TB_PRIVATE_KEY` | Yes | Ethereum private key (format `0x...`) for order signing |
+| `TB_WALLET_ADDRESS` | Yes | Hyperliquid wallet address |
+| `ANTHROPIC_API_KEY` | No | Claude API key for sentiment analysis |
+| `TB_WEB_API_KEY` | No | API key for the web interface (auto-generated if absent) |
 
-### Configuration du bot (`config/bot_config.json`)
+### Bot Configuration (`config/bot_config.json`)
 
 ```jsonc
 {
   "exchange": {
-    "rest_url": "https://api.hyperliquid.xyz",  // URL REST Hyperliquid
-    "ws_url": "wss://api.hyperliquid.xyz/ws",   // URL WebSocket
-    "is_testnet": false,                         // true pour le testnet
-    "vault_address": null                        // adresse du vault (optionnel)
+    "rest_url": "https://api.hyperliquid.xyz",  // Hyperliquid REST URL
+    "ws_url": "wss://api.hyperliquid.xyz/ws",   // WebSocket URL
+    "is_testnet": false,                         // Set true for testnet
+    "vault_address": null                        // Vault address (optional)
   },
   "risk": {
-    "daily_loss_pct": 6.0,        // stop trading apres -6% de perte journaliere
-    "emergency_close_pct": 5.0,   // fermeture d'urgence a -5%
-    "max_leverage": 10,           // levier max par ordre
-    "max_position_pct": 700.0     // taille max de position (% du compte)
+    "daily_loss_pct": 6.0,        // Halt trading after -6% daily loss
+    "emergency_close_pct": 5.0,   // Emergency close at -5%
+    "max_leverage": 10,           // Maximum leverage per order
+    "max_position_pct": 700.0     // Maximum position size (% of account)
   },
   "strategies": {
     "dir": "./trading_bot/strategies",
     "reload_interval_sec": 5,
     "active": [
       {
-        "file": "btc_sniper_1h.py",       // fichier de la strategie
-        "role": "primary",                 // role (informatif)
-        "coins": ["BTC"],                  // coins trades
+        "file": "btc_sniper_1h.py",       // Strategy filename
+        "role": "primary",                 // Role (informational)
+        "coins": ["BTC"],                  // Traded assets
         "paper_mode": true,                // true = paper trading
-        "paper_balance": 500.0             // balance initiale paper
+        "paper_balance": 500.0             // Initial paper balance
       }
     ]
   },
   "sentiment": {
-    "enabled": true,                             // activer l'analyse de sentiment
-    "claude_model": "claude-haiku-4-5-20251001", // modele Claude utilise
-    "max_tokens_per_hour": 50000,                // limite de tokens/heure
-    "cache_ttl_sec": 900,                        // cache du sentiment (15min)
-    "weight": 0.3,                               // poids du sentiment dans les decisions
-    "hard_block_threshold": -0.7                 // seuil de blocage (sentiment tres negatif)
+    "enabled": true,                             // Enable sentiment analysis
+    "claude_model": "claude-haiku-4-5-20251001", // Claude model identifier
+    "max_tokens_per_hour": 50000,                // Hourly token budget
+    "cache_ttl_sec": 900,                        // Sentiment cache TTL (15 min)
+    "weight": 0.3,                               // Sentiment weight in decisions
+    "hard_block_threshold": -0.7                  // Block threshold (strongly negative)
   }
 }
 ```
 
-## Demarrage
+## Startup
 
 ```bash
-# Demarrage direct
+# Direct startup
 python main.py
 
-# Ou via le script
+# Or via the startup script
 ./scripts/start.sh
 ```
 
-Une fenetre desktop native s'ouvre avec le dashboard. Le bot demarre en etat **OFF** — utiliser l'interface pour le demarrer.
+A native desktop window opens displaying the dashboard. The bot starts in the **OFF** state — use the interface to start it.
 
 ## Architecture
 
-### 3 threads
+### Three Threads
 
 ```
 Main Thread (pywebview)        Thread 1 (uvicorn)       Thread 2 (asyncio)
@@ -117,187 +115,185 @@ Main Thread (pywebview)        Thread 1 (uvicorn)       Thread 2 (asyncio)
 +------------------+          +------------------+     +------------------+
 ```
 
-### Flux d'evenements
+### Event Flow
 
 ```
 WebSocket Hyperliquid → Engine dispatch
-    ├─ on_mids()   → mise a jour prix → strategy.on_tick()
-    ├─ on_fills()  → trades executes  → strategy.on_fill()
-    ├─ on_book()   → carnet d'ordres  → strategy.on_book()
-    └─ on_timer()  → toutes les 60s   → strategy.on_timer()
+    ├─ on_mids()   → price updates    → strategy.on_tick()
+    ├─ on_fills()  → trade executions → strategy.on_fill()
+    ├─ on_book()   → order book       → strategy.on_book()
+    └─ on_timer()  → every 60 seconds → strategy.on_timer()
 ```
 
-### Routage des ordres
+### Order Routing
 
 ```
 Strategy → StrategyAPI → OrderManager
-    ├─ Paper mode → PaperExchange (simulateur local)
-    └─ Live mode  → RestClient → Hyperliquid API (signe EIP-712)
+    ├─ Paper mode → PaperExchange (local simulator)
+    └─ Live mode  → RestClient → Hyperliquid API (EIP-712 signed)
 ```
 
-## Structure du projet
+## Project Structure
 
 ```
 trading-bot-v2/
-├── main.py                             # Point d'entree (3 threads)
-├── requirements.txt                    # Dependances Python
-├── .env.example                        # Template variables d'environnement
+├── main.py                             # Entry point (3 threads)
+├── requirements.txt                    # Python dependencies
+├── .env.example                        # Environment variable template
 ├── config/
-│   └── bot_config.json                 # Configuration principale
+│   └── bot_config.json                 # Main configuration
 │
-├── trading_bot/                        # Package principal
+├── trading_bot/                        # Core package
 │   ├── __init__.py
-│   ├── engine.py                       # Moteur de trading (lifecycle, dispatch)
-│   ├── config.py                       # Dataclasses de configuration
-│   ├── types.py                        # Types de donnees (Order, Fill, Position...)
-│   ├── db.py                           # Couche SQLite (WAL mode)
-│   ├── decimal_utils.py                # Arithmetique a precision fixe
-│   ├── logging_config.py               # Configuration du logging
+│   ├── engine.py                       # Trading engine (lifecycle, dispatch)
+│   ├── config.py                       # Configuration dataclasses
+│   ├── types.py                        # Data types (Order, Fill, Position...)
+│   ├── db.py                           # SQLite layer (WAL mode)
+│   ├── decimal_utils.py                # Fixed-precision arithmetic
+│   ├── logging_config.py               # Logging configuration
 │   │
-│   ├── exchange/                       # Integration exchange
-│   │   ├── rest.py                     # Client REST Hyperliquid
-│   │   ├── ws.py                       # Client WebSocket (prix, fills, ordres)
-│   │   ├── signing.py                  # Signature EIP-712 des ordres
-│   │   ├── order_manager.py            # Routage ordres (paper/live)
-│   │   └── paper_exchange.py           # Simulateur paper trading
+│   ├── exchange/                       # Exchange integration
+│   │   ├── rest.py                     # Hyperliquid REST client
+│   │   ├── ws.py                       # WebSocket client (prices, fills, orders)
+│   │   ├── signing.py                  # EIP-712 order signing
+│   │   ├── order_manager.py            # Order routing (paper/live)
+│   │   └── paper_exchange.py           # Paper trading simulator
 │   │
-│   ├── strategy/                       # Framework de strategies
-│   │   ├── api.py                      # StrategyAPI (interface principale)
-│   │   ├── loader.py                   # Chargement dynamique + hot-reload
-│   │   ├── base.py                     # Protocol de strategie
-│   │   └── indicators.py              # 50+ indicateurs techniques
+│   ├── strategy/                       # Strategy framework
+│   │   ├── api.py                      # StrategyAPI (primary interface)
+│   │   ├── loader.py                   # Dynamic loading + hot-reload
+│   │   ├── base.py                     # Strategy protocol
+│   │   └── indicators.py              # 50+ technical indicators
 │   │
-│   ├── strategies/                     # Implementations de strategies
-│   │   ├── template.py                 # Classe de base TemplateStrategy
+│   ├── strategies/                     # Strategy implementations
+│   │   ├── template.py                 # TemplateStrategy base class
 │   │   ├── btc_sniper_1h.py            # BTC sniper (RSI/MACD, 1h)
-│   │   ├── doge_sniper_relaxed_1h.py   # DOGE sniper (trailing stops, 1h)
 │   │   ├── sol_range_breakout_1h.py    # SOL range breakout (1h)
-│   │   └── sol_test_1usd.py            # Strategie de test
+│   │   └── sol_test_1usd.py            # Test strategy
 │   │
 │   ├── risk/
-│   │   └── risk_manager.py             # Limites journalieres, circuit breaker
+│   │   └── risk_manager.py             # Daily limits, circuit breaker
 │   │
 │   ├── data/
 │   │   └── data_manager.py             # Sentiment (Claude AI + Fear & Greed)
 │   │
-│   ├── tools/                          # Utilitaires
-│   │   ├── candle_fetcher.py           # Fetch candles historiques (Binance)
-│   │   ├── funding_fetcher.py          # Historique funding rates
-│   │   ├── regime_analyzer.py          # Analyse de regime de marche
-│   │   └── signal_scanner.py           # Detection de signaux
+│   ├── tools/                          # Utilities
+│   │   ├── candle_fetcher.py           # Historical candle fetching (Binance)
+│   │   ├── funding_fetcher.py          # Funding rate history
+│   │   ├── regime_analyzer.py          # Market regime analysis
+│   │   └── signal_scanner.py           # Signal detection
 │   │
-│   ├── backtest/                       # Moteur de backtesting
-│   │   ├── engine.py                   # Execution du backtest
-│   │   ├── monte_carlo.py              # Simulation Monte Carlo
+│   ├── backtest/                       # Backtesting engine
+│   │   ├── engine.py                   # Backtest execution
+│   │   ├── monte_carlo.py              # Monte Carlo simulation
 │   │   └── runner.py                   # CLI runner
 │   │
 │   ├── report/
-│   │   └── dashboard.py               # Metriques dashboard temps reel
+│   │   └── dashboard.py               # Real-time dashboard metrics
 │   │
-│   └── web/                            # Interface web (FastAPI)
-│       ├── app.py                      # Creation app (auth, CORS, routes)
-│       ├── routes/                     # Endpoints API
-│       │   ├── bot.py                  # Start/stop/status du bot
-│       │   ├── account.py              # Compte, positions, ordres
-│       │   ├── strategies.py           # Gestion des strategies
-│       │   ├── market.py               # Donnees de marche, sentiment
-│       │   ├── trades.py               # Historique des trades
-│       │   ├── backtest.py             # Execution de backtests
+│   └── web/                            # Web interface (FastAPI)
+│       ├── app.py                      # App factory (auth, CORS, routes)
+│       ├── routes/                     # API endpoints
+│       │   ├── bot.py                  # Bot start/stop/status
+│       │   ├── account.py              # Account, positions, orders
+│       │   ├── strategies.py           # Strategy management
+│       │   ├── market.py               # Market data, sentiment
+│       │   ├── trades.py               # Trade history
+│       │   ├── backtest.py             # Backtest execution
 │       │   ├── settings.py             # Configuration
-│       │   └── logs.py                 # Streaming de logs (SSE)
-│       ├── services/                   # Logique metier
-│       │   ├── market_data.py          # Aggregation donnees marche
-│       │   ├── metrics.py              # Calcul de metriques
-│       │   ├── digest.py               # Digest journalier
-│       │   ├── alerts.py               # Systeme d'alertes
-│       │   └── backtest_service.py     # Orchestration backtests
-│       └── static/                     # Assets frontend
-│           └── js/pages/              # Composants JS
+│       │   └── logs.py                 # Log streaming (SSE)
+│       ├── services/                   # Business logic
+│       │   ├── market_data.py          # Market data aggregation
+│       │   ├── metrics.py              # Metrics computation
+│       │   ├── digest.py               # Daily digest
+│       │   ├── alerts.py               # Alert system
+│       │   └── backtest_service.py     # Backtest orchestration
+│       └── static/                     # Frontend assets
+│           └── js/pages/              # JS components
 │
 ├── scripts/
-│   ├── start.sh                        # Script de demarrage
-│   ├── backtest.sh                     # Lancement backtest
-│   ├── fetch_candles.sh                # Recuperation de candles
-│   ├── grid_search.sh                  # Recherche d'hyperparametres
-│   └── run_backtests.py                # Runner backtest Python
+│   ├── start.sh                        # Startup script
+│   ├── backtest.sh                     # Backtest launcher
+│   ├── fetch_candles.sh                # Candle fetching
+│   ├── grid_search.sh                  # Hyperparameter search
+│   └── run_backtests.py                # Python backtest runner
 │
 ├── docs/
-│   ├── gui.md                          # Documentation de l'interface
-│   └── SECURITY_AUDIT.md              # Audit de securite (13 vulns corrigees)
+│   ├── gui.md                          # Interface documentation
+│   └── SECURITY_AUDIT.md              # Security audit (13 vulnerabilities remediated)
 │
-├── data/                               # Base SQLite (gitignore)
-└── logs/                               # Logs d'execution (gitignore)
+├── data/                               # SQLite database (gitignored)
+└── logs/                               # Execution logs (gitignored)
 ```
 
 ## API Endpoints
 
 ### Bot (`/api/bot`)
 
-| Methode | Route | Description |
-|---------|-------|-------------|
-| GET | `/status` | Etat du bot (running, uptime, connexion WS) |
-| POST | `/start` | Demarrer le bot |
-| POST | `/stop` | Arreter le bot |
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/status` | Bot state (running, uptime, WS connection) |
+| POST | `/start` | Start the bot |
+| POST | `/stop` | Stop the bot |
 
-### Compte (`/api/account`)
+### Account (`/api/account`)
 
-| Methode | Route | Description |
-|---------|-------|-------------|
-| GET | `/value` | Valeur du compte |
-| GET | `/positions` | Positions ouvertes |
-| GET | `/open-orders` | Ordres en cours |
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/value` | Account value |
+| GET | `/positions` | Open positions |
+| GET | `/open-orders` | Pending orders |
 
 ### Strategies (`/api/strategies`)
 
-| Methode | Route | Description |
-|---------|-------|-------------|
-| GET | `/list` | Liste des strategies actives |
-| GET | `/{name}/code` | Code source d'une strategie |
-| PUT | `/{name}/disabled` | Activer/desactiver une strategie |
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/list` | Active strategies |
+| GET | `/{name}/code` | Strategy source code |
+| PUT | `/{name}/disabled` | Enable/disable a strategy |
 
-### Marche (`/api/market`)
+### Market (`/api/market`)
 
-| Methode | Route | Description |
-|---------|-------|-------------|
-| GET | `/mids` | Prix mid de tous les assets |
-| GET | `/book/{coin}` | Carnet d'ordres |
-| GET | `/sentiment` | Analyse de sentiment |
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/mids` | Mid prices for all assets |
+| GET | `/book/{coin}` | Order book |
+| GET | `/sentiment` | Sentiment analysis |
 
 ### Trades (`/api/trades`)
 
-| Methode | Route | Description |
-|---------|-------|-------------|
-| GET | `/list` | Historique des trades |
-| GET | `/export` | Export CSV |
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/list` | Trade history |
+| GET | `/export` | CSV export |
 
 ### Backtest (`/api/backtest`)
 
-| Methode | Route | Description |
-|---------|-------|-------------|
-| POST | `/run` | Lancer un backtest |
+| Method | Route | Description |
+|--------|-------|-------------|
+| POST | `/run` | Execute a backtest |
 
 ### Settings (`/api/settings`)
 
-| Methode | Route | Description |
-|---------|-------|-------------|
-| GET | `/` | Configuration actuelle |
-| PUT | `/mode` | Basculer paper/live |
-| PUT | `/` | Mettre a jour la configuration |
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/` | Current configuration |
+| PUT | `/mode` | Toggle paper/live mode |
+| PUT | `/` | Update configuration |
 
-## Strategies incluses
+## Included Strategies
 
-| Strategie | Coin | Logique | TP/SL |
-|-----------|------|---------|-------|
+| Strategy | Asset | Logic | TP/SL |
+|----------|-------|-------|-------|
 | `btc_sniper_1h` | BTC | RSI > 65 + MACD deceleration (long), RSI < 30 + MACD < 0 (short) | 2% / 2% |
-| `doge_sniper_relaxed_1h` | DOGE | RSI < 35 (short dominant), trailing stops, pause apres 4 pertes | 4.5% / 1.5% |
 | `sol_range_breakout_1h` | SOL | Bear mode (SMA200) + range breakout (volume spike) | 4.5-6% / 1.5-2% |
 
-### Creer une strategie
+### Creating a Strategy
 
-1. Copier `trading_bot/strategies/template.py`
-2. Implementer `on_init()`, `on_tick()`, `on_fill()`, `on_timer()`
-3. Ajouter l'entree dans `config/bot_config.json` sous `strategies.active`
-4. La strategie sera chargee automatiquement (hot-reload)
+1. Copy `trading_bot/strategies/template.py`
+2. Implement `on_init()`, `on_tick()`, `on_fill()`, `on_timer()`
+3. Add an entry under `strategies.active` in `config/bot_config.json`
+4. The strategy will be loaded automatically via hot-reload
 
 ## Backtesting
 
@@ -313,39 +309,39 @@ python -m trading_bot.backtest.runner \
   --end 2025-03-01
 ```
 
-## Base de donnees
+## Database
 
-SQLite avec WAL mode. Tables principales :
+SQLite with WAL mode. Principal tables:
 
-| Table | Contenu |
-|-------|---------|
-| `candles` | Donnees OHLCV historiques |
-| `trades` | Historique des trades executes |
-| `strategy_state` | Etat persiste des strategies (JSON) |
-| `funding_rates` | Historique des funding rates |
-| `order_strategy_map` | Mapping ordre → strategie |
-| `backtest_history` | Resultats de backtests |
+| Table | Contents |
+|-------|----------|
+| `candles` | Historical OHLCV data |
+| `trades` | Executed trade history |
+| `strategy_state` | Persisted strategy state (JSON) |
+| `funding_rates` | Funding rate history |
+| `order_strategy_map` | Order-to-strategy mapping |
+| `backtest_history` | Backtest results |
 
-## Securite
+## Security
 
-- Authentification par API key sur tous les endpoints
-- CORS desactive (localhost only)
-- Protection path traversal sur le chargement de strategies
-- Echappement XSS sur le frontend
-- Nettoyage ANSI sur le streaming de logs
-- Audit complet : 13 vulnerabilites identifiees et corrigees (voir `docs/SECURITY_AUDIT.md`)
+- API key authentication on all endpoints
+- CORS disabled (localhost only)
+- Path traversal protection on strategy loading
+- XSS escaping on the frontend
+- ANSI code sanitization on log streaming
+- Comprehensive audit: 13 vulnerabilities identified and remediated (see `docs/SECURITY_AUDIT.md`)
 
-## Dependances
+## Dependencies
 
-| Package | Version | Usage |
-|---------|---------|-------|
-| `httpx` | >= 0.27 | Client HTTP (API REST Hyperliquid) |
-| `websockets` | >= 13.0 | Streaming temps reel |
-| `msgpack` | >= 1.0 | Serialisation binaire (signature) |
-| `eth-account` | >= 0.13 | Gestion compte Ethereum |
-| `pycryptodome` | >= 3.20 | Fonctions cryptographiques |
-| `anthropic` | >= 0.40 | API Claude (sentiment) |
-| `fastapi` | >= 0.115 | Framework API web |
-| `uvicorn` | >= 0.32 | Serveur ASGI |
-| `pywebview` | >= 5.0 | Fenetre desktop native |
-| `python-dotenv` | >= 1.0 | Chargement `.env` |
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `httpx` | >= 0.27 | HTTP client (Hyperliquid REST API) |
+| `websockets` | >= 13.0 | Real-time streaming |
+| `msgpack` | >= 1.0 | Binary serialization (signing) |
+| `eth-account` | >= 0.13 | Ethereum account management |
+| `pycryptodome` | >= 3.20 | Cryptographic functions |
+| `anthropic` | >= 0.40 | Claude API (sentiment) |
+| `fastapi` | >= 0.115 | Web API framework |
+| `uvicorn` | >= 0.32 | ASGI server |
+| `pywebview` | >= 5.0 | Native desktop window |
+| `python-dotenv` | >= 1.0 | `.env` file loading |

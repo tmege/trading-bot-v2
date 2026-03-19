@@ -472,6 +472,36 @@ def _compute_rsi(closes: list[float], period: int) -> float:
     return 100.0 - 100.0 / (1.0 + rs)
 
 
+def _compute_rsi_series(closes: list[float], period: int) -> list[float]:
+    """Compute RSI at every point in O(n) using a single Wilder smooth pass."""
+    if len(closes) < period + 1:
+        return []
+
+    gains = []
+    losses = []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i - 1]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
+
+    avg_gain_series = _wilder_smooth(gains, period)
+    avg_loss_series = _wilder_smooth(losses, period)
+
+    if not avg_gain_series or not avg_loss_series:
+        return []
+
+    rsi_series = []
+    for i in range(len(avg_gain_series)):
+        ag = avg_gain_series[i]
+        al = avg_loss_series[i]
+        if al == 0:
+            rsi_series.append(100.0 if ag > 0 else 50.0)
+        else:
+            rs = ag / al
+            rsi_series.append(100.0 - 100.0 / (1.0 + rs))
+    return rsi_series
+
+
 def _compute_atr(
     highs: list[float], lows: list[float], closes: list[float], period: int
 ) -> float:
@@ -554,10 +584,8 @@ def _compute_stoch_rsi(
     if n < rsi_period + stoch_period:
         return
 
-    # Compute RSI for each suffix
-    rsi_vals = []
-    for end in range(rsi_period + 1, n + 1):
-        rsi_vals.append(_compute_rsi(closes[:end], rsi_period))
+    # O(n) RSI series instead of O(n^2) loop
+    rsi_vals = _compute_rsi_series(closes, rsi_period)
 
     if len(rsi_vals) < stoch_period:
         return
@@ -757,10 +785,12 @@ def _compute_rsi_divergence(
     n = len(closes)
     lookback = min(30, n)
 
-    rsi_vals = []
-    for end in range(n - lookback, n + 1):
-        if end > period:
-            rsi_vals.append(_compute_rsi(closes[:end], period))
+    # Use pre-computed RSI series instead of O(n*lookback) loop
+    all_rsi = _compute_rsi_series(closes, period)
+    if not all_rsi:
+        return
+    # Extract the last `lookback+1` RSI values
+    rsi_vals = all_rsi[-(lookback + 1):] if len(all_rsi) > lookback else all_rsi
 
     if len(rsi_vals) < 10:
         return

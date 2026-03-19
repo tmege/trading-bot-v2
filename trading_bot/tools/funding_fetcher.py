@@ -84,7 +84,7 @@ def fetch_funding(
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch funding rates from Binance")
-    parser.add_argument("coins", nargs="+", help="Coin symbols (BTC ETH SOL DOGE)")
+    parser.add_argument("coins", nargs="+", help="Coin symbols (BTC ETH SOL)")
     parser.add_argument("--db", default="./data/trading_bot.db", help="DB path")
     parser.add_argument("--start", type=int, default=None, help="Start timestamp ms")
 

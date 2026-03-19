@@ -1,0 +1,59 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Crypto Strategy Research — Configuration
+# Tout est normalisé en % du portfolio (100% = capital total)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Portfolio
+capital_initial: 100.0            # 100% = portfolio complet
+stop_global_portfolio: 50.0       # arrêt si capital < 50%
+
+# Assets & Timeframes
+assets:
+  - BTC/USDT
+  - ETH/USDT
+  - SOL/USDT
+
+base_timeframe: 5m                # donnée brute téléchargée
+timeframes:                       # générés par resample du 5min
+  - 1h
+  - 4h
+
+# Période
+period_start: "2021-01-01"
+period_end: "2026-03-19"
+train_ratio: 1.0                  # 100% train, test en live
+
+# Coûts de transaction (en %)
+fees:
+  taker: 0.06                     # 0.06%
+  maker: 0.02                     # 0.02%
+  slippage: 0.05                  # 0.05%
+
+# Funding rate (en %)
+funding:
+  default_rate: 0.01              # 0.01% / 8h
+  interval_hours: 8
+
+# Margin (en %)
+margin:
+  maintenance: 0.4                # 0.4%
+  mode: isolated
+
+# Data
+data:
+  cache_dir: data
+  cache_max_age_hours: 24
+  max_gap_candles: 3              # interpoler gaps <= 3, rejeter > 3
+
+# Frais Hyperliquid réalistes (en bps) — utilisés par le mode realistic
+fees_hyperliquid:
+  maker_bps: 1.5                    # 0.015% entrée ALO
+  taker_bps: 4.5                    # 0.045% sortie trigger
+  slippage_sl_bps: 1.0              # 1 bps slippage sur SL
+  entry_offset_bps: 2.0             # 0.02% offset ALO
+  funding_rate_8h_bps: 1.0          # 0.01% / 8h
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s | %(name)-20s | %(levelname)-5s | %(message)s"
