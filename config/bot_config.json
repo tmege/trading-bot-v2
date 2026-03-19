@@ -1,0 +1,68 @@
+{
+  "exchange": {
+    "rest_url": "https://api.hyperliquid.xyz",
+    "ws_url": "wss://api.hyperliquid.xyz/ws",
+    "is_testnet": false,
+    "vault_address": null
+  },
+  "risk": {
+    "daily_loss_pct": 6.0,
+    "emergency_close_pct": 5.0,
+    "max_leverage": 10,
+    "max_position_pct": 700.0
+  },
+  "strategies": {
+    "dir": "./trading_bot/strategies",
+    "reload_interval_sec": 5,
+    "active": [
+      {
+        "file": "btc_sniper_1h.py",
+        "role": "primary",
+        "coins": [
+          "BTC"
+        ],
+        "paper_mode": true,
+        "paper_balance": 500.0
+      },
+      {
+        "file": "doge_sniper_relaxed_1h.py",
+        "role": "",
+        "coins": [
+          "DOGE"
+        ],
+        "paper_mode": true,
+        "paper_balance": 500.0
+      },
+      {
+        "file": "sol_range_breakout_1h.py",
+        "role": "",
+        "coins": [
+          "SOL"
+        ],
+        "paper_mode": true,
+        "paper_balance": 500.0
+      }
+    ]
+  },
+  "database": {
+    "path": "./data/trading_bot.db"
+  },
+  "logging": {
+    "dir": "./logs",
+    "level": 0
+  },
+  "mode": {
+    "paper_trading": false,
+    "paper_initial_balance": 500
+  },
+  "sentiment": {
+    "enabled": true,
+    "claude_model": "claude-haiku-4-5-20251001",
+    "max_tokens_per_hour": 50000,
+    "cache_ttl_sec": 900,
+    "min_confidence": 0.5,
+    "weight": 0.3,
+    "hard_block_threshold": -0.7,
+    "cryptopanic_token": ""
+  }
+}
