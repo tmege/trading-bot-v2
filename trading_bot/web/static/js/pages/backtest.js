@@ -360,15 +360,18 @@
       const total = Math.ceil(btTradesAll.length / 50);
       const curr = Math.floor(btTradeOffset / 50) + 1;
       pagEl.innerHTML = `
-        <button class="btn btn-sm" onclick="TB._btTradePrev()" ${btTradeOffset === 0 ? 'disabled' : ''}>Prev</button>
+        <button class="btn btn-sm" data-action="bt-prev" ${btTradeOffset === 0 ? 'disabled' : ''}>Prev</button>
         <span class="page-info">${curr} / ${total}</span>
-        <button class="btn btn-sm" onclick="TB._btTradeNext()" ${btTradeOffset + 50 >= btTradesAll.length ? 'disabled' : ''}>Next</button>
+        <button class="btn btn-sm" data-action="bt-next" ${btTradeOffset + 50 >= btTradesAll.length ? 'disabled' : ''}>Next</button>
       `;
+      pagEl.querySelector('[data-action="bt-prev"]').addEventListener('click', () => {
+        btTradeOffset = Math.max(0, btTradeOffset - 50); renderBtTrades();
+      });
+      pagEl.querySelector('[data-action="bt-next"]').addEventListener('click', () => {
+        btTradeOffset += 50; renderBtTrades();
+      });
     }
   }
-
-  TB._btTradePrev = () => { btTradeOffset = Math.max(0, btTradeOffset - 50); renderBtTrades(); };
-  TB._btTradeNext = () => { btTradeOffset += 50; renderBtTrades(); };
 
   function initEquityChart(results) {
     const el = document.getElementById('bt-equity');

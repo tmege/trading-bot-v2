@@ -246,15 +246,18 @@
       const totalPages = Math.ceil(data.total / 100);
       const currentPage = Math.floor(tradeOffset / 100) + 1;
       pagEl.innerHTML = `
-        <button class="btn btn-sm" onclick="TB._tradePagePrev()" ${tradeOffset === 0 ? 'disabled' : ''}>Prev</button>
+        <button class="btn btn-sm" data-action="trade-prev" ${tradeOffset === 0 ? 'disabled' : ''}>Prev</button>
         <span class="page-info">${currentPage} / ${totalPages}</span>
-        <button class="btn btn-sm" onclick="TB._tradePageNext()" ${tradeOffset + 100 >= data.total ? 'disabled' : ''}>Next</button>
+        <button class="btn btn-sm" data-action="trade-next" ${tradeOffset + 100 >= data.total ? 'disabled' : ''}>Next</button>
       `;
+      pagEl.querySelector('[data-action="trade-prev"]').addEventListener('click', () => {
+        tradeOffset = Math.max(0, tradeOffset - 100); loadTrades();
+      });
+      pagEl.querySelector('[data-action="trade-next"]').addEventListener('click', () => {
+        tradeOffset += 100; loadTrades();
+      });
     }
   }
-
-  TB._tradePagePrev = () => { tradeOffset = Math.max(0, tradeOffset - 100); loadTrades(); };
-  TB._tradePageNext = () => { tradeOffset += 100; loadTrades(); };
 
   function initEquityChart() {
     const el = document.getElementById('equity-chart');

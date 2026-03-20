@@ -23,6 +23,20 @@
       </div>
     `;
 
+    // Event delegation — CSP blocks inline onclick handlers
+    document.getElementById('strat-list').addEventListener('click', function(e) {
+      const toggleBtn = e.target.closest('[data-action="toggle"]');
+      if (toggleBtn) {
+        e.stopPropagation();
+        toggleStrategy(toggleBtn.dataset.strategy);
+        return;
+      }
+      const row = e.target.closest('[data-action="select"]');
+      if (row) {
+        selectStrategy(row.dataset.strategy);
+      }
+    });
+
     loadStrategies();
     intervals.push(setInterval(loadStrategies, 10000));
   }
@@ -52,7 +66,7 @@
 
       const eqBadge = s.equity_pct != null ? `<span class="badge badge-gray" style="font-size:10px;">${Math.round(s.equity_pct * 100)}% × ${s.leverage || '?'}x</span>` : '';
 
-      return `<div style="padding:12px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="TB._selectStrategy('${TB.utils.esc(s.name)}')">
+      return `<div style="padding:12px;border-bottom:1px solid var(--border);cursor:pointer;" data-action="select" data-strategy="${TB.utils.esc(s.name)}">
         <div class="flex gap-8 mb-12" style="align-items:center;flex-wrap:wrap;">
           <strong>${TB.utils.esc(s.name)}</strong>
           ${eqBadge} ${roleBadge} ${modeBadge} ${statusBadge}
@@ -67,15 +81,15 @@
         ${s.win_rate_per_coin && Object.keys(s.win_rate_per_coin).length > 0 ?
           `<div style="font-size:10px;color:var(--text3);margin-top:4px;">WR/coin: ${Object.entries(s.win_rate_per_coin).map(([c,w]) => `${c}:${w}%`).join(' ')}</div>` : ''}
         <div class="flex gap-8 mt-8">
-          <button class="btn btn-sm" onclick="event.stopPropagation();TB._toggleStrategy('${TB.utils.esc(s.name)}')">
-            ${s.status === 'DISABLED' || s.status === 'ERRORED' ? 'Enable' : (s.status === 'STOPPED' ? 'Disable' : 'Disable')}
+          <button class="btn btn-sm" data-action="toggle" data-strategy="${TB.utils.esc(s.name)}">
+            ${s.status === 'DISABLED' || s.status === 'ERRORED' ? 'Enable' : 'Disable'}
           </button>
         </div>
       </div>`;
     }).join('');
   }
 
-  TB._selectStrategy = async (name) => {
+  async function selectStrategy(name) {
     selectedStrategy = name;
     const header = document.getElementById('code-header');
     const viewer = document.getElementById('code-viewer');
@@ -95,15 +109,15 @@
     if (typeof Prism !== 'undefined') {
       Prism.highlightAllUnder(viewer);
     }
-  };
+  }
 
-  TB._toggleStrategy = async (name) => {
+  async function toggleStrategy(name) {
     const result = await TB.api.post('/api/strategies/' + encodeURIComponent(name) + '/toggle');
     if (result) {
       TB.toast.show('success', `Strategy ${name}: ${result.status}`);
       loadStrategies();
     }
-  };
+  }
 
   TB.pages.strategies = { mount, unmount };
 })();
