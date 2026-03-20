@@ -1,20 +1,159 @@
+"""
+Backtest service — connects the GUI to the crypto_bot V2 backtesting engine.
+
+Uses SweepBacktester._run_realistic() for Hyperliquid-realistic simulation:
+  - Maker/taker fees, slippage on SL, entry offset ALO
+  - Sizing compose with drawdown multiplier
+  - Cooldown between trades, funding rate, max hold timeout
+  - FeatureEngine for 40+ technical indicators
+  - V2 strategies for signal generation
+"""
 import json
 import logging
+import os
 import queue as queue_mod
+import sys
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
-from trading_bot.backtest.engine import BacktestConfig, BacktestEngine
-from trading_bot.backtest.monte_carlo import run_monte_carlo
+import numpy as np
+import pandas as pd
+
+# Add crypto_bot to path for V2 engine imports
+_CRYPTO_BOT_DIR = str(Path(__file__).resolve().parents[3] / "crypto_bot")
+if _CRYPTO_BOT_DIR not in sys.path:
+    sys.path.insert(0, _CRYPTO_BOT_DIR)
+
+from exec_config import ExecConfig
+from modules.feature_engine import FeatureEngine
+from modules.strategies import V2_STRATEGY_REGISTRY
+from sweep_runner import SweepBacktester
+
 from trading_bot.db import Database
-from trading_bot.strategy.loader import StrategyLoader
-from trading_bot.types import Candle
 
 log = logging.getLogger(__name__)
 
+INITIAL_EQUITY = 1000.0
+_CONFIG_PATH = os.path.join(_CRYPTO_BOT_DIR, "config.yaml")
+
+
+# ═══════════════════════════════════════════════════════════════
+# Strategy mapping: live file → V2 class + params + exec config
+# ═══════════════════════════════════════════════════════════════
+
+STRATEGY_MAP = {
+    "btc_inside_bar_breakout_1h.py": {
+        "v2_class": "StratInsideBarBreakout",
+        "v2_params": {
+            "vol_min": 0.8,
+            "trend_filter": True,
+            "atr_filter": True,
+            "sl_pct": 2.5,
+            "tp_pct": 4.5,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.15, leverage=5,
+            cooldown_bars=4, max_hold_bars=72,
+        ),
+        "signal_filter": "hours_8_20",
+    },
+    "sol_breakout_normal_1h.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 14,
+            "vol_breakout_min": 2.5,
+            "sl_pct": 0.9,
+            "tp_pct": 4.0,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.15, leverage=5,
+            cooldown_bars=4, max_hold_bars=48,
+        ),
+        "signal_filter": "anti_wick_40",
+    },
+    "eth_breakout_relaxed_1h.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 35,
+            "vol_breakout_min": 4.5,
+            "sl_pct": 1.8,
+            "tp_pct": 3.5,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.20, leverage=5,
+            cooldown_bars=4, max_hold_bars=36,
+        ),
+        "signal_filter": "anti_wick_60",
+    },
+    "xrp_mean_reversion_bb_1h.py": {
+        "v2_class": "StratMeanReversionBB",
+        "v2_params": {
+            "rsi_oversold": 20,
+            "rsi_overbought": 70,
+            "bb_entry_low": 0.08,
+            "bb_entry_high": 0.95,
+            "sl_pct": 0.7,
+            "tp_pct": 8.0,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.35, leverage=5,
+            cooldown_bars=4, max_hold_bars=48,
+        ),
+        "signal_filter": "anti_wick_50",
+    },
+    "bnb_breakout_relaxed_1h.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 32,
+            "vol_breakout_min": 0.8,
+            "sl_pct": 0.3,
+            "tp_pct": 4.0,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.35, leverage=5,
+            cooldown_bars=3, max_hold_bars=48,
+        ),
+        "signal_filter": None,
+    },
+}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Signal filters (same as crypto_bot sweeps)
+# ═══════════════════════════════════════════════════════════════
+
+def _filter_hours_8_20(signals, df):
+    hours = df.index.hour
+    mask = pd.Series(True, index=df.index)
+    for h in list(range(0, 8)) + list(range(21, 24)):
+        mask = mask & (hours != h)
+    return signals.where(mask, 0)
+
+
+def _filter_anti_wick(ratio):
+    def _f(signals, df):
+        body = (df["close"] - df["open"]).abs()
+        total_range = df["high"] - df["low"]
+        wick_ratio = 1 - body / total_range.replace(0, 1)
+        return signals.where(wick_ratio < ratio, 0)
+    return _f
+
+
+SIGNAL_FILTERS = {
+    "hours_8_20": _filter_hours_8_20,
+    "anti_wick_40": _filter_anti_wick(0.40),
+    "anti_wick_50": _filter_anti_wick(0.50),
+    "anti_wick_60": _filter_anti_wick(0.60),
+}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Data types & state
+# ═══════════════════════════════════════════════════════════════
 
 @dataclass
 class BacktestRun:
@@ -22,14 +161,25 @@ class BacktestRun:
     strategy: str
     coins: list[str]
     status: str = "pending"
-    progress: dict = field(default_factory=dict)
     results: dict = field(default_factory=dict)
     queue: queue_mod.Queue = field(default_factory=queue_mod.Queue)
     error: str = ""
 
 
 _runs: dict[str, BacktestRun] = {}
+_fe: FeatureEngine | None = None
 
+
+def _get_fe() -> FeatureEngine:
+    global _fe
+    if _fe is None:
+        _fe = FeatureEngine(_CONFIG_PATH)
+    return _fe
+
+
+# ═══════════════════════════════════════════════════════════════
+# Public API (called by routes)
+# ═══════════════════════════════════════════════════════════════
 
 def get_available_coins(db: Database) -> list[dict]:
     if not db:
@@ -61,8 +211,8 @@ def start_run(
     strategy_file: str,
     coins: list[str],
     db_path: str,
-    strategies_dir: str,
-    initial_balance: float = 100.0,
+    strategies_dir: str = "",
+    initial_balance: float = 1000.0,
     max_leverage: int = 50,
     interval_ms: int = 3_600_000,
     start_ms: int = 0,
@@ -79,7 +229,7 @@ def start_run(
 
     t = threading.Thread(
         target=_run_backtest_thread,
-        args=(run, db_path, strategies_dir, initial_balance, max_leverage, interval_ms, start_ms, end_ms),
+        args=(run, db_path, strategy_file, start_ms, end_ms),
         daemon=True,
     )
     t.start()
@@ -105,7 +255,6 @@ def get_history(db: Database, limit: int = 500) -> list[dict]:
 
 
 def get_latest_result(db: Database, strategy: str) -> dict | None:
-    """Get the latest backtest result_json for a strategy."""
     if not db:
         return None
     try:
@@ -116,8 +265,6 @@ def get_latest_result(db: Database, strategy: str) -> dict | None:
         )
         if not rows:
             return None
-
-        # Group by coin, keep latest per coin
         seen = {}
         for r in rows:
             coin = r["coin"]
@@ -126,10 +273,8 @@ def get_latest_result(db: Database, strategy: str) -> dict | None:
                     seen[coin] = json.loads(r["result_json"])
                 except (json.JSONDecodeError, TypeError):
                     pass
-
         if not seen:
             return None
-
         return {"strategy": strategy, "results": seen}
     except Exception:
         log.exception("Error fetching latest backtest result")
@@ -148,13 +293,14 @@ def clear_history(db: Database) -> int:
         return 0
 
 
+# ═══════════════════════════════════════════════════════════════
+# Core backtest thread (crypto_bot V2 engine)
+# ═══════════════════════════════════════════════════════════════
+
 def _run_backtest_thread(
     run: BacktestRun,
     db_path: str,
-    strategies_dir: str,
-    initial_balance: float,
-    max_leverage: int,
-    interval_ms: int,
+    strategy_file: str,
     start_ms: int = 0,
     end_ms: int = 0,
 ) -> None:
@@ -162,67 +308,112 @@ def _run_backtest_thread(
     db.open()
 
     try:
-        base_dir = Path(strategies_dir).resolve()
-        strategy_path = str(base_dir / run.strategy)
-        resolved = Path(strategy_path).resolve()
-        if not resolved.is_relative_to(base_dir):
-            run.error = "Path traversal blocked"
+        mapping = STRATEGY_MAP.get(strategy_file)
+        if not mapping:
+            run.error = f"Strategy '{strategy_file}' not in STRATEGY_MAP"
             run.status = "error"
             run.queue.put({"type": "error", "message": run.error})
             return
 
+        v2_cls = V2_STRATEGY_REGISTRY.get(mapping["v2_class"])
+        if not v2_cls:
+            run.error = f"V2 class '{mapping['v2_class']}' not found"
+            run.status = "error"
+            run.queue.put({"type": "error", "message": run.error})
+            return
+
+        bt = SweepBacktester(_CONFIG_PATH)
+        fe = _get_fe()
+        ec = mapping["exec_config"]
+        sig_filter = SIGNAL_FILTERS.get(mapping["signal_filter"]) if mapping["signal_filter"] else None
+
         for i, coin in enumerate(run.coins):
             try:
-                run.queue.put({"type": "progress", "coin": coin, "pct": 0, "coin_idx": i, "total_coins": len(run.coins)})
+                run.queue.put({
+                    "type": "progress", "coin": coin, "pct": 0,
+                    "coin_idx": i, "total_coins": len(run.coins),
+                })
 
-                candles_5m = _load_candles(db, coin, start_ms, end_ms)
-                if not candles_5m:
-                    run.queue.put({"type": "coin_done", "coin": coin, "error": "No candles"})
+                # Load 5m candles from DB → DataFrame
+                df_5m = _load_candles_df(db, coin, start_ms, end_ms)
+                if df_5m is None or len(df_5m) < 100:
+                    run.queue.put({"type": "coin_done", "coin": coin, "error": "Not enough candles"})
                     continue
 
-                bt_config = BacktestConfig(
-                    coin=coin,
-                    strategy_path=strategy_path,
-                    initial_balance=initial_balance,
-                    max_leverage=max_leverage,
-                    strategy_interval_ms=interval_ms,
+                run.queue.put({
+                    "type": "progress", "coin": coin, "pct": 20,
+                    "coin_idx": i, "total_coins": len(run.coins),
+                })
+
+                # Resample to 1h + compute features
+                df_1h = df_5m.resample("1h").agg({
+                    "open": "first", "high": "max",
+                    "low": "min", "close": "last", "volume": "sum",
+                }).dropna(subset=["open"])
+
+                df_1h = fe.compute_all(df_1h)
+
+                run.queue.put({
+                    "type": "progress", "coin": coin, "pct": 40,
+                    "coin_idx": i, "total_coins": len(run.coins),
+                })
+
+                # Generate V2 signals
+                strat = v2_cls(mapping["v2_params"])
+                signals = strat.generate_signals(df_1h)
+
+                # Apply signal filter
+                if sig_filter is not None:
+                    signals = sig_filter(signals, df_1h)
+
+                run.queue.put({
+                    "type": "progress", "coin": coin, "pct": 60,
+                    "coin_idx": i, "total_coins": len(run.coins),
+                })
+
+                # Run realistic backtest
+                metrics = bt.run(
+                    df_1h, signals,
+                    sl_pct=strat.sl_pct,
+                    tp_pct=strat.tp_pct,
+                    exec_config=ec,
+                    initial_equity=INITIAL_EQUITY,
                 )
 
-                loader = StrategyLoader(strategies_dir)
-                instance = loader._load_module(str(resolved), Path(run.strategy).stem)
+                run.queue.put({
+                    "type": "progress", "coin": coin, "pct": 80,
+                    "coin_idx": i, "total_coins": len(run.coins),
+                })
 
-                bt_engine = BacktestEngine(bt_config, db)
+                # Walk-forward analysis (70/30 split)
+                wf = _walk_forward_v2(df_1h, v2_cls, mapping["v2_params"], bt, ec, sig_filter)
 
-                monitor = threading.Thread(
-                    target=_monitor_progress,
-                    args=(run, bt_engine, coin, len(candles_5m), i, len(run.coins)),
-                    daemon=True,
-                )
-                monitor.start()
-
-                result = bt_engine.run(instance, candles_5m)
-
-                exit_pnls = [t.pnl for t in result.trades if t.pnl != 0]
+                # Monte Carlo
+                trades_detail = metrics.get("trades_detail", [])
                 mc = {}
-                if len(exit_pnls) >= 5:
-                    mc_result = run_monte_carlo(exit_pnls, initial_balance)
-                    mc = mc_result.to_dict()
+                dollar_pnls = [t["net_pnl"] for t in trades_detail]
+                if len(dollar_pnls) >= 5:
+                    mc = SweepBacktester.monte_carlo(dollar_pnls, INITIAL_EQUITY) or {}
 
-                result_dict = _result_to_dict(result)
-                result_dict["monte_carlo"] = mc
-                result_dict["verdict"] = _compute_verdict(result)
-
-                wf = _walk_forward(candles_5m, instance.__class__, bt_config, db, loader, str(resolved))
+                # Convert to GUI format
+                result_dict = _convert_to_gui(metrics, df_1h)
                 result_dict["walk_forward"] = wf
+                result_dict["monte_carlo"] = mc
+                result_dict["verdict"] = _compute_verdict(metrics)
 
                 run.results[coin] = result_dict
 
-                _save_to_history(db, run.run_id, run.strategy, coin, result, result_dict)
+                # Save to history
+                _save_to_history(db, run.run_id, strategy_file, coin, metrics, result_dict)
 
+                run.queue.put({
+                    "type": "progress", "coin": coin, "pct": 100,
+                    "coin_idx": i, "total_coins": len(run.coins),
+                })
                 run.queue.put({"type": "coin_done", "coin": coin, "result": result_dict})
 
             except Exception as e:
-                log.exception(f"Backtest error for {coin}")
+                log.exception("Backtest error for %s", coin)
                 run.queue.put({"type": "coin_done", "coin": coin, "error": str(e)})
 
         run.status = "complete"
@@ -237,47 +428,82 @@ def _run_backtest_thread(
         db.close()
 
 
-def _monitor_progress(run: BacktestRun, bt_engine: BacktestEngine, coin: str, total_candles: int, coin_idx: int, total_coins: int) -> None:
-    while run.status == "running":
-        try:
-            current = len(bt_engine._equity_curve)
-            pct = min(current / total_candles * 100, 100) if total_candles > 0 else 0
-            run.queue.put({
-                "type": "progress",
-                "coin": coin,
-                "pct": round(pct, 1),
-                "coin_idx": coin_idx,
-                "total_coins": total_coins,
-            })
-        except Exception:
-            pass
-        time.sleep(0.5)
+# ═══════════════════════════════════════════════════════════════
+# Data loading
+# ═══════════════════════════════════════════════════════════════
 
+def _load_candles_df(
+    db: Database, coin: str, start_ms: int = 0, end_ms: int = 0,
+) -> pd.DataFrame | None:
+    """Load 5m candles from SQLite → pandas DataFrame with DatetimeIndex."""
+    query = "SELECT time_open, open, high, low, close, volume FROM candles WHERE coin=? AND interval='5m'"
+    params: list = [coin]
 
-def _walk_forward(candles_5m, strategy_cls, bt_config, db, loader, resolved):
-    if len(candles_5m) < 100:
+    if start_ms > 0:
+        query += " AND time_open >= ?"
+        params.append(start_ms)
+    if end_ms > 0:
+        query += " AND time_open <= ?"
+        params.append(end_ms)
+
+    query += " ORDER BY time_open"
+    rows = db.fetchall(query, tuple(params))
+
+    if not rows:
         return None
 
+    data = []
+    for r in rows:
+        data.append({
+            "time_open": r["time_open"],
+            "open": r["open"],
+            "high": r["high"],
+            "low": r["low"],
+            "close": r["close"],
+            "volume": r["volume"],
+        })
+
+    df = pd.DataFrame(data)
+    df["datetime"] = pd.to_datetime(df["time_open"], unit="ms", utc=True)
+    df = df.set_index("datetime")
+    df = df.drop(columns=["time_open"])
+    df = df[~df.index.duplicated(keep="first")]
+    return df
+
+
+# ═══════════════════════════════════════════════════════════════
+# Walk-forward (V2 engine)
+# ═══════════════════════════════════════════════════════════════
+
+def _walk_forward_v2(df_1h, v2_cls, v2_params, bt, ec, sig_filter):
+    """70/30 walk-forward using V2 engine."""
+    if len(df_1h) < 200:
+        return None
     try:
-        split = int(len(candles_5m) * 0.7)
-        is_candles = candles_5m[:split]
-        oos_candles = candles_5m[split:]
+        split = int(len(df_1h) * 0.7)
+        is_df = df_1h.iloc[:split]
+        oos_df = df_1h.iloc[split:]
 
-        is_instance = strategy_cls()
-        is_engine = BacktestEngine(bt_config, db)
-        is_result = is_engine.run(is_instance, is_candles)
+        results = {}
+        for label, df_slice in [("is", is_df), ("oos", oos_df)]:
+            strat = v2_cls(v2_params)
+            signals = strat.generate_signals(df_slice)
+            if sig_filter:
+                signals = sig_filter(signals, df_slice)
+            m = bt.run(
+                df_slice, signals,
+                sl_pct=strat.sl_pct, tp_pct=strat.tp_pct,
+                exec_config=ec, initial_equity=INITIAL_EQUITY,
+            )
+            results[label] = m["total_return"] * 100  # ratio → %
 
-        oos_instance = strategy_cls()
-        oos_engine = BacktestEngine(bt_config, db)
-        oos_result = oos_engine.run(oos_instance, oos_candles)
-
-        is_return = is_result.return_pct
-        oos_return = oos_result.return_pct
-        decay = ((oos_return - is_return) / is_return * 100) if is_return != 0 else 0
+        is_ret = results["is"]
+        oos_ret = results["oos"]
+        decay = ((oos_ret - is_ret) / is_ret * 100) if is_ret != 0 else 0
 
         return {
-            "is_return": round(is_return, 2),
-            "oos_return": round(oos_return, 2),
+            "is_return": round(is_ret, 2),
+            "oos_return": round(oos_ret, 2),
             "decay_pct": round(decay, 2),
             "overfit_alert": decay < -50,
         }
@@ -286,13 +512,101 @@ def _walk_forward(candles_5m, strategy_cls, bt_config, db, loader, resolved):
         return None
 
 
-def _compute_verdict(result) -> str:
-    r = result.return_pct
-    s = result.sharpe_ratio
-    dd = result.max_drawdown_pct
-    wr = result.win_rate * 100
-    pf = result.profit_factor
-    trades = result.total_trades
+# ═══════════════════════════════════════════════════════════════
+# Result conversion (crypto_bot → GUI format)
+# ═══════════════════════════════════════════════════════════════
+
+def _convert_to_gui(metrics: dict, df_1h: pd.DataFrame) -> dict:
+    """Convert SweepBacktester metrics to the format the GUI frontend expects."""
+    initial = metrics.get("initial_equity", INITIAL_EQUITY)
+    final = metrics.get("final_equity", initial)
+    trades_detail = metrics.get("trades_detail", [])
+
+    # Win/loss breakdown
+    wins = [t for t in trades_detail if t["net_pnl"] > 0]
+    losses = [t for t in trades_detail if t["net_pnl"] <= 0]
+
+    avg_win = np.mean([t["net_pnl"] for t in wins]) if wins else 0.0
+    avg_loss = abs(np.mean([t["net_pnl"] for t in losses])) if losses else 0.0
+    max_win = max((t["net_pnl"] for t in wins), default=0.0)
+    max_loss = min((t["net_pnl"] for t in losses), default=0.0)
+
+    # Sortino ratio
+    sortino = 0.0
+    if len(trades_detail) >= 2:
+        pnls = [t["pnl_pct"] for t in trades_detail]
+        total_days = (df_1h.index[-1] - df_1h.index[0]).total_seconds() / 86400
+        total_days = max(total_days, 1)
+        trades_per_year = len(pnls) / (total_days / 365.25)
+        downside = [p for p in pnls if p < 0]
+        if downside:
+            mean_pnl = np.mean(pnls)
+            down_std = np.std(downside, ddof=1)
+            if down_std > 1e-6:
+                sortino = mean_pnl / down_std * np.sqrt(trades_per_year)
+                sortino = max(-10.0, min(10.0, sortino))
+
+    # Equity curve for chart (from trade exits)
+    equity_curve = [{"time_ms": int(df_1h.index[0].timestamp() * 1000), "equity": initial}]
+    for t in trades_detail:
+        exit_time = t.get("exit_time")
+        if exit_time is not None:
+            ts_ms = int(exit_time.timestamp() * 1000) if hasattr(exit_time, "timestamp") else 0
+            equity_curve.append({"time_ms": ts_ms, "equity": t["equity_after"]})
+
+    # Limit equity curve size
+    if len(equity_curve) > 500:
+        equity_curve = equity_curve[-500:]
+
+    # Trade journal
+    gui_trades = []
+    for t in trades_detail:
+        exit_time = t.get("exit_time")
+        ts_ms = int(exit_time.timestamp() * 1000) if exit_time is not None and hasattr(exit_time, "timestamp") else 0
+        gui_trades.append({
+            "time_ms": ts_ms,
+            "side": "buy" if t["side"] == 1 else "sell",
+            "price": round(t.get("entry_price", 0), 6),
+            "size": round(t.get("notional", 0) / max(t.get("entry_price", 1), 1e-9), 6),
+            "pnl": round(t["net_pnl"], 6),
+            "fee": round(t.get("entry_fee", 0) + t.get("exit_fee", 0), 6),
+            "balance_after": round(t["equity_after"], 4),
+        })
+
+    return {
+        "start_balance": initial,
+        "end_balance": round(final, 4),
+        "total_pnl": round(final - initial, 4),
+        "total_fees": round(metrics.get("total_fees", 0) + metrics.get("total_funding", 0), 6),
+        "return_pct": round(metrics["total_return"] * 100, 2),
+        "total_trades": metrics["nb_trades"],
+        "winning_trades": len(wins),
+        "losing_trades": len(losses),
+        "win_rate": round(metrics["win_rate"] * 100, 2),
+        "profit_factor": round(metrics["profit_factor"], 4) if metrics["profit_factor"] != float("inf") else 999.0,
+        "avg_win": round(avg_win, 6),
+        "avg_loss": round(avg_loss, 6),
+        "max_win": round(max_win, 6),
+        "max_loss": round(max_loss, 6),
+        "max_drawdown_pct": round(metrics["max_drawdown"] * 100, 2),
+        "sharpe_ratio": round(metrics["sharpe_ratio"], 4),
+        "sortino_ratio": round(sortino, 4),
+        "equity_curve": equity_curve,
+        "trades": gui_trades,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# Verdict & history
+# ═══════════════════════════════════════════════════════════════
+
+def _compute_verdict(metrics: dict) -> str:
+    r = metrics["total_return"] * 100  # ratio → %
+    s = metrics["sharpe_ratio"]
+    dd = metrics["max_drawdown"] * 100  # ratio → %
+    wr = metrics["win_rate"] * 100  # ratio → %
+    pf = metrics["profit_factor"]
+    trades = metrics["nb_trades"]
 
     if r > 10 and s > 1.0 and dd < 15 and wr > 40 and pf > 1.5:
         return "DEPLOYABLE"
@@ -305,43 +619,12 @@ def _compute_verdict(result) -> str:
     return "ABANDON"
 
 
-def _result_to_dict(result) -> dict:
-    return {
-        "start_balance": result.start_balance,
-        "end_balance": round(result.end_balance, 4),
-        "total_pnl": round(result.total_pnl, 4),
-        "total_fees": round(result.total_fees, 6),
-        "return_pct": round(result.return_pct, 2),
-        "total_trades": result.total_trades,
-        "winning_trades": result.winning_trades,
-        "losing_trades": result.losing_trades,
-        "win_rate": round(result.win_rate * 100, 2),
-        "profit_factor": round(result.profit_factor, 4) if result.profit_factor != float("inf") else 999.0,
-        "avg_win": round(result.avg_win, 6),
-        "avg_loss": round(result.avg_loss, 6),
-        "max_win": round(result.max_win, 6),
-        "max_loss": round(result.max_loss, 6),
-        "max_drawdown_pct": round(result.max_drawdown_pct, 2),
-        "sharpe_ratio": round(result.sharpe_ratio, 4),
-        "sortino_ratio": round(result.sortino_ratio, 4),
-        "equity_curve": result.equity_curve[-500:] if len(result.equity_curve) > 500 else result.equity_curve,
-        "trades": [
-            {
-                "time_ms": t.time_ms,
-                "side": t.side,
-                "price": t.price,
-                "size": t.size,
-                "pnl": round(t.pnl, 6),
-                "fee": round(t.fee, 6),
-                "balance_after": round(t.balance_after, 4),
-            }
-            for t in result.trades
-        ],
-    }
-
-
-def _save_to_history(db, run_id, strategy, coin, result, result_dict):
+def _save_to_history(db, run_id, strategy, coin, metrics, result_dict):
     try:
+        pf = metrics["profit_factor"]
+        if pf == float("inf"):
+            pf = 999.0
+
         db.execute(
             "INSERT OR REPLACE INTO backtest_history "
             "(run_id, strategy, coin, timestamp_ms, return_pct, sharpe, max_dd, "
@@ -352,12 +635,12 @@ def _save_to_history(db, run_id, strategy, coin, result, result_dict):
                 strategy,
                 coin,
                 int(time.time() * 1000),
-                result.return_pct,
-                result.sharpe_ratio,
-                result.max_drawdown_pct,
-                result.win_rate * 100,
-                result.total_trades,
-                result.profit_factor if result.profit_factor != float("inf") else 999.0,
+                metrics["total_return"] * 100,
+                metrics["sharpe_ratio"],
+                metrics["max_drawdown"] * 100,
+                metrics["win_rate"] * 100,
+                metrics["nb_trades"],
+                pf,
                 result_dict.get("verdict", ""),
                 "{}",
                 json.dumps(result_dict, default=str),
@@ -368,34 +651,5 @@ def _save_to_history(db, run_id, strategy, coin, result, result_dict):
         log.exception("Error saving backtest to history")
 
 
-def _load_candles(db: Database, coin: str, start_ms: int = 0, end_ms: int = 0) -> list[Candle]:
-    query = "SELECT * FROM candles WHERE coin=? AND interval='5m'"
-    params: list = [coin]
-
-    if start_ms > 0:
-        query += " AND time_open >= ?"
-        params.append(start_ms)
-    if end_ms > 0:
-        query += " AND time_open <= ?"
-        params.append(end_ms)
-
-    query += " ORDER BY time_open"
-    rows = db.fetchall(query, tuple(params))
-    return [
-        Candle(
-            time_open=r["time_open"],
-            time_close=r["time_open"] + 300000,
-            open=r["open"],
-            high=r["high"],
-            low=r["low"],
-            close=r["close"],
-            volume=r["volume"],
-            n_trades=r["n_trades"] or 0,
-        )
-        for r in rows
-    ]
-
-
 def _ms_to_date(ms: int) -> str:
-    from datetime import datetime, timezone
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
