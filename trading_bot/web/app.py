@@ -53,14 +53,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Cache-Control"] = "no-store"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-            "img-src 'self' data:; "
-            "connect-src 'self' ws://127.0.0.1:*; "
-            "frame-ancestors 'none'"
-        )
+        # Skip CSP if already set by the route handler (e.g. index with nonce)
+        if "Content-Security-Policy" not in response.headers:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data:; "
+                "connect-src 'self' ws://127.0.0.1:*; "
+                "frame-ancestors 'none'"
+            )
         return response
 
 
@@ -112,11 +114,21 @@ def create_app(engine, stop_event=None) -> FastAPI:
     async def index():
         html_path = static_dir / "index.html"
         html = html_path.read_text(encoding="utf-8")
-        # M-07: Inject API key safely with JSON encoding to prevent XSS
+        # M-07: Inject API key safely with JSON encoding + CSP nonce to prevent XSS
+        nonce = secrets.token_urlsafe(16)
         safe_key = json.dumps(_API_KEY)
-        inject = f'<script>window.__TB_API_KEY__={safe_key};</script>'
+        inject = f'<script nonce="{nonce}">window.__TB_API_KEY__={safe_key};</script>'
         html = html.replace("</head>", inject + "\n</head>")
-        return HTMLResponse(content=html)
+        response = HTMLResponse(content=html)
+        response.headers["Content-Security-Policy"] = (
+            f"default-src 'self'; "
+            f"script-src 'self' 'nonce-{nonce}' https://unpkg.com https://cdn.jsdelivr.net; "
+            f"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            f"img-src 'self' data:; "
+            f"connect-src 'self' ws://127.0.0.1:*; "
+            f"frame-ancestors 'none'"
+        )
+        return response
 
     # Enhanced WebSocket with fills via DB poll
     @app.websocket("/ws/live")
