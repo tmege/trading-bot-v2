@@ -104,10 +104,11 @@
       sel.innerHTML = strats.map(s =>
         `<option value="${TB.utils.esc(s.file)}">${TB.utils.esc(s.name)} (${s.coins.map(c => TB.utils.esc(c)).join(', ')})</option>`
       ).join('');
-      sel.onchange = () => updateCoinsForStrategy();
+      sel.onchange = () => { updateCoinsForStrategy(); loadLatestResults(); };
     }
 
     updateCoinsForStrategy();
+    loadLatestResults();
   }
 
   function updateCoinsForStrategy() {
@@ -163,6 +164,19 @@
         ${TB.utils.esc(c)} <span class="c-text2" style="font-size:9px;">(${years})</span>
       </span>`;
     }).join('');
+  }
+
+  async function loadLatestResults() {
+    const sel = document.getElementById('bt-strategy');
+    if (!sel || !sel.value) return;
+
+    const data = await TB.api.get('/api/backtest/latest/' + encodeURIComponent(sel.value));
+    if (!data || data.error || !data.results) {
+      document.getElementById('bt-results').style.display = 'none';
+      return;
+    }
+
+    showResults(data.results);
   }
 
   async function runBacktest() {

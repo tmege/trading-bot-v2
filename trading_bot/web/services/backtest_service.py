@@ -104,6 +104,38 @@ def get_history(db: Database, limit: int = 500) -> list[dict]:
         return []
 
 
+def get_latest_result(db: Database, strategy: str) -> dict | None:
+    """Get the latest backtest result_json for a strategy."""
+    if not db:
+        return None
+    try:
+        rows = db.fetchall(
+            "SELECT coin, result_json, timestamp_ms FROM backtest_history "
+            "WHERE strategy=? ORDER BY timestamp_ms DESC",
+            (strategy,),
+        )
+        if not rows:
+            return None
+
+        # Group by coin, keep latest per coin
+        seen = {}
+        for r in rows:
+            coin = r["coin"]
+            if coin not in seen:
+                try:
+                    seen[coin] = json.loads(r["result_json"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        if not seen:
+            return None
+
+        return {"strategy": strategy, "results": seen}
+    except Exception:
+        log.exception("Error fetching latest backtest result")
+        return None
+
+
 def clear_history(db: Database) -> int:
     if not db:
         return 0

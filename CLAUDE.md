@@ -53,7 +53,12 @@ Strategy → StrategyAPI → OrderManager
 - `trading_bot/strategy/base.py`: strategy protocol (interface)
 - `trading_bot/strategy/indicators.py`: 50+ technical indicators
 - `trading_bot/strategies/template.py`: `TemplateStrategy` base class
-- `trading_bot/strategies/*.py`: concrete implementations
+- `trading_bot/strategies/btc_inside_bar_breakout_1h.py`: BTC inside bar breakout (EMA21+ATR, TP 4.5%/SL 2.5%)
+- `trading_bot/strategies/btc_momentum_score_1h.py`: BTC momentum score composite (SMA20+RSI+MACD+vol, TP 6%/SL 2.5%)
+- `trading_bot/strategies/eth_breakout_relaxed_1h.py`: ETH breakout lb=35 (anti-wick 60%, TP 3.5%/SL 1.8%)
+- `trading_bot/strategies/sol_breakout_normal_1h.py`: SOL breakout lb=14 (anti-wick 40%, TP 4%/SL 0.9%)
+- `trading_bot/strategies/sol_breakout_safe_1h.py`: SOL breakout lb=15 (TP 6%/SL 1%)
+- `trading_bot/strategies/sol_breakout_aggressive_1h.py`: SOL breakout lb=10 (lev 7x, TP 8%/SL 1%)
 
 ### Web
 - `trading_bot/web/app.py`: FastAPI factory (API key auth, CORS, routes)

@@ -71,11 +71,25 @@ cp .env.example .env
     "reload_interval_sec": 5,
     "active": [
       {
-        "file": "btc_sniper_1h.py",       // Strategy filename
-        "role": "primary",                 // Role (informational)
-        "coins": ["BTC"],                  // Traded assets
-        "paper_mode": true,                // true = paper trading
-        "paper_balance": 500.0             // Initial paper balance
+        "file": "btc_inside_bar_breakout_1h.py",
+        "role": "primary",
+        "coins": ["BTC"],
+        "paper_mode": true,
+        "paper_balance": 500.0
+      },
+      {
+        "file": "eth_breakout_relaxed_1h.py",
+        "role": "primary",
+        "coins": ["ETH"],
+        "paper_mode": true,
+        "paper_balance": 500.0
+      },
+      {
+        "file": "sol_breakout_normal_1h.py",
+        "role": "primary",
+        "coins": ["SOL"],
+        "paper_mode": true,
+        "paper_balance": 500.0
       }
     ]
   },
@@ -167,9 +181,12 @@ trading-bot-v2/
 │   │
 │   ├── strategies/                     # Strategy implementations
 │   │   ├── template.py                 # TemplateStrategy base class
-│   │   ├── btc_sniper_1h.py            # BTC sniper (RSI/MACD, 1h)
-│   │   ├── sol_range_breakout_1h.py    # SOL range breakout (1h)
-│   │   └── sol_test_1usd.py            # Test strategy
+│   │   ├── btc_inside_bar_breakout_1h.py  # BTC inside bar breakout (1h)
+│   │   ├── btc_momentum_score_1h.py       # BTC momentum score composite (1h)
+│   │   ├── eth_breakout_relaxed_1h.py     # ETH breakout relaxed (1h)
+│   │   ├── sol_breakout_normal_1h.py      # SOL breakout normal (1h)
+│   │   ├── sol_breakout_safe_1h.py        # SOL breakout safe (1h)
+│   │   └── sol_breakout_aggressive_1h.py  # SOL breakout aggressive (1h)
 │   │
 │   ├── risk/
 │   │   └── risk_manager.py             # Daily limits, circuit breaker
@@ -283,10 +300,26 @@ trading-bot-v2/
 
 ## Included Strategies
 
-| Strategy | Asset | Logic | TP/SL |
-|----------|-------|-------|-------|
-| `btc_sniper_1h` | BTC | RSI > 65 + MACD deceleration (long), RSI < 30 + MACD < 0 (short) | 2% / 2% |
-| `sol_range_breakout_1h` | SOL | Bear mode (SMA200) + range breakout (volume spike) | 4.5-6% / 1.5-2% |
+### BTC
+
+| Strategy | Logic | TP/SL | Sizing | Backtest |
+|----------|-------|-------|--------|----------|
+| `btc_inside_bar_breakout_1h` | Inside bar + breakout direction (EMA21 trend, ATR compression < 20%, vol >= 0.8, heures 8-20 UTC) | 4.5% / 2.5% | 20%, lev 5x | Sharpe +1.90 (3Y), WR 56%, 114 trades, DD 11.1% |
+| `btc_momentum_score_1h` | Score composite (close > SMA20, RSI > 50, MACD histo > 0, vol > 1.2). Long si score < 1 → >= 3, short si > 3 → <= 1 | 6% / 2.5% | 35%, lev 5x | Sharpe +0.65, positif 10/10 fenêtres |
+
+### ETH
+
+| Strategy | Logic | TP/SL | Sizing | Backtest |
+|----------|-------|-------|--------|----------|
+| `eth_breakout_relaxed_1h` | Breakout haut/bas sur 35 bougies (SMA50 trend, vol >= 4.5, anti-wick 60%, max hold 36h) | 3.5% / 1.8% | 20%, lev 5x | Sharpe +2.45 (3Y), WR 58%, 113 trades, DD 8.1% |
+
+### SOL
+
+| Strategy | Logic | TP/SL | Sizing | Backtest |
+|----------|-------|-------|--------|----------|
+| `sol_breakout_normal_1h` | Breakout haut/bas sur 14 bougies (SMA50 trend, vol >= 2.5, anti-wick 40%) | 4% / 0.9% | 30%, lev 5x | Sharpe +2.60 (3Y), WR 32%, 320 trades, DD 14.9% |
+| `sol_breakout_safe_1h` | Breakout haut/bas sur 15 bougies (SMA50 trend, vol >= 2.5, cooldown 6h) | 6% / 1% | 30%, lev 5x | Sharpe +1.65, positif 10/10 fenêtres |
+| `sol_breakout_aggressive_1h` | Breakout haut/bas sur 10 bougies (SMA50 trend, vol >= 2.5, cooldown 2h) | 8% / 1% | 50%, lev 7x | Sharpe +1.54, positif 10/10 fenêtres |
 
 ### Creating a Strategy
 

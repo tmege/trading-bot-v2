@@ -4,35 +4,39 @@ from trading_bot.strategies.template import TemplateStrategy
 
 
 class EthBreakoutRelaxed1h(TemplateStrategy):
-    """ETH Breakout Relaxed — Lookback 15, SL 1.5%, TP 5%.
+    """ETH Breakout Relaxed — Lookback 35, SL 1.8%, TP 3.5%.
 
-    Backtest: Sharpe +2.09 (3Y portfolio), stable 5/5 fenêtres.
-    TP 5% vs 4% : +$373 sur 3Y, même MaxDD.
+    Backtest: Sharpe +2.45 (3Y), stable 5/5 fenêtres.
+    Fine-tune: lb=35, vol=4.5, SL=1.8%, TP=3.5%, max_hold=36h.
+    $+1,782, DD 8.1%, WR 58%, 113 trades.
+    Anti-wick 60% filter.
 
     Logique :
-      - Breakout haut : mid_price > HIGH(15 dernières bougies)
-      - Breakout bas  : mid_price < LOW(15 dernières bougies)
-      - Filtre volume : vol_ratio >= 3.0
+      - Breakout haut : mid_price > HIGH(35 dernières bougies)
+      - Breakout bas  : mid_price < LOW(35 dernières bougies)
+      - Filtre volume : vol_ratio >= 4.5
+      - Filtre anti-wick : ignore signaux si wick > 60% de la bougie
       - Direction     : long si prix > SMA50, short sinon
 
     Sizing réduit (20%) pour cohabiter avec BTC + SOL sans
-    dépasser le daily loss limit de 6%.
+    dépasser le daily loss limit.
     """
 
     def __init__(self):
         super().__init__()
         self.name = "eth_breakout_relaxed_1h"
-        self.tp_pct = 0.05
-        self.sl_pct = 0.015
+        self.tp_pct = 0.035
+        self.sl_pct = 0.018
         self.equity_pct = 0.20
         self.leverage = 5
         self.cooldown_sec = 14400.0
-        self.max_hold_sec = 172800.0
+        self.max_hold_sec = 129600.0
         self.entry_offset_pct = 0.0002
         self.entry_timeout_sec = 90.0
 
-        self.lookback = 15
-        self.vol_min = 3.0
+        self.lookback = 35
+        self.vol_min = 4.5
+        self.max_wick_ratio = 0.60
 
     def _scan_signals(self, ind, mid_price):
         if mid_price <= 0:
@@ -47,6 +51,15 @@ class EthBreakoutRelaxed1h(TemplateStrategy):
         candles = self.api.get_candles(self.coin, "1h", 200)
         if not candles or len(candles) < self.lookback + 2:
             return None
+
+        # Anti-wick filter: skip signals on high-wick candles (manipulation)
+        last_candle = candles[-2]
+        body = abs(last_candle.close - last_candle.open)
+        total_range = last_candle.high - last_candle.low
+        if total_range > 0:
+            wick_ratio = 1 - body / total_range
+            if wick_ratio >= self.max_wick_ratio:
+                return None
 
         recent = candles[-(self.lookback + 1):-1]
         rolling_high = max(c.high for c in recent)

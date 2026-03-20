@@ -1,21 +1,24 @@
 import logging
+from datetime import datetime, timezone
 
 from trading_bot.strategies.template import TemplateStrategy
 
 
 class BtcInsideBarBreakout1h(TemplateStrategy):
-    """BTC Inside Bar Breakout — SL 1.5%, TP 3%, trend+ATR filters.
+    """BTC Inside Bar Breakout — SL 2.5%, TP 4.5%, trend+ATR filters.
 
-    Backtest: Sharpe +1.36 (3Y), stable 5/5 fenêtres 6M.
-    $1000 → $1,429 (3Y compound, 20% equity).
-    54% win rate, max drawdown 5.4%.
+    Backtest: Sharpe +1.90 (3Y), stable 5/5 fenêtres 6M.
+    Fine-tune: vol=0.8, SL=2.5%, TP=4.5%.
+    $+1,587, DD 11.1%, WR 56%, 114 trades.
+    Filtre horaire 8-20 UTC.
 
     Logique :
       - Inside bar : high[i-1] < high[i-2] AND low[i-1] > low[i-2]
       - Breakout   : mid_price > high[i-1] → LONG, < low[i-1] → SHORT
-      - Filtre vol : vol_ratio >= 1.5
+      - Filtre vol : vol_ratio >= 0.8
       - Filtre trend : close > EMA21 pour long, < EMA21 pour short
       - Filtre ATR : compression (ATR percentile < 20%)
+      - Filtre horaire : trade uniquement entre 8-20 UTC
 
     Sizing 20% pour cohabiter avec SOL + ETH.
     """
@@ -23,19 +26,27 @@ class BtcInsideBarBreakout1h(TemplateStrategy):
     def __init__(self):
         super().__init__()
         self.name = "btc_inside_bar_breakout_1h"
-        self.tp_pct = 0.03
-        self.sl_pct = 0.015
-        self.equity_pct = 0.20
+        self.tp_pct = 0.045
+        self.sl_pct = 0.025
+        self.equity_pct = 0.15
         self.leverage = 5
         self.cooldown_sec = 14400.0
         self.max_hold_sec = 259200.0
         self.entry_offset_pct = 0.0002
         self.entry_timeout_sec = 90.0
 
-        self.vol_min = 1.5
+        self.vol_min = 0.8
+        self.allowed_hours = range(8, 21)  # 8-20 UTC
 
     def _scan_signals(self, ind, mid_price):
         if mid_price <= 0:
+            return None
+
+        # Hour filter: only trade 8-20 UTC
+        current_hour = datetime.fromtimestamp(
+            self.api.time(), tz=timezone.utc
+        ).hour
+        if current_hour not in self.allowed_hours:
             return None
 
         if ind.vol_ratio < self.vol_min:

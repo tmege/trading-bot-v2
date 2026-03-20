@@ -61,6 +61,9 @@ async def get_strategies():
                     if rows and rows["t"] > 0:
                         wr_per_coin[coin] = round(rows["w"] / rows["t"] * 100, 1)
 
+            equity_pct = getattr(inst, "equity_pct", None) if inst else None
+            leverage = getattr(inst, "leverage", None) if inst else None
+
             result.append({
                 "name": info.name,
                 "file": Path(info.file_path).name,
@@ -74,6 +77,8 @@ async def get_strategies():
                 "pnl": round(total_pnl, 4),
                 "position": pos_side,
                 "consec_losses": consec,
+                "equity_pct": equity_pct,
+                "leverage": leverage,
             })
         return result
 

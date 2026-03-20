@@ -148,6 +148,18 @@ async def get_history(limit: int = Query(default=500, le=1000)):
     return get_history(_engine.db, limit)
 
 
+@router.get("/latest/{strategy}")
+async def get_latest_result(strategy: str):
+    """Return the latest backtest result for a strategy (full result_json)."""
+    from trading_bot.web.services.backtest_service import get_latest_result
+    if not _engine or not _engine.db:
+        return None
+    # V-02: Validate strategy filename
+    if not re.match(r'^[a-zA-Z0-9_-]+\.py$', strategy):
+        return {"error": "Invalid strategy filename"}
+    return get_latest_result(_engine.db, strategy)
+
+
 @router.delete("/history")
 async def delete_history():
     from trading_bot.web.services.backtest_service import clear_history

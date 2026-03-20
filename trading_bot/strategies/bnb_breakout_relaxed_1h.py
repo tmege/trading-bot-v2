@@ -3,36 +3,38 @@ import logging
 from trading_bot.strategies.template import TemplateStrategy
 
 
-class SolBreakoutNormal1h(TemplateStrategy):
-    """SOL Breakout Normal — Lookback 14, SL 0.9%, TP 4%.
+class BnbBreakoutRelaxed1h(TemplateStrategy):
+    """BNB Breakout Relaxed — Lookback 32, SL 0.3%, TP 4%.
 
-    Backtest: Sharpe +2.60 (3Y), stable 5/5 fenêtres.
-    Fine-tune: lb=14, SL=0.9%, anti-wick 40%.
-    $+6,384, DD 14.9%, WR 32%, 320 trades.
+    Backtest: Sharpe +2.14 (3Y), stable 5/5 fenetres 6M.
+    Fine-tune: lb=32, vol=0.8, SL=0.3%, TP=4.0%, cooldown=3h.
+    $+985, DD 3.8%, WR 14%, 827 trades, PF 1.75.
 
     Logique :
-      - Breakout haut : mid_price > HIGH(14 dernières bougies)
-      - Breakout bas  : mid_price < LOW(14 dernières bougies)
-      - Filtre volume : vol_ratio >= 2.5
-      - Filtre anti-wick : ignore signaux si wick > 40% de la bougie
+      - Breakout haut : mid_price > HIGH(32 dernieres bougies)
+      - Breakout bas  : mid_price < LOW(32 dernieres bougies)
+      - Filtre volume : vol_ratio >= 0.8
       - Direction     : long si prix > SMA50, short sinon
+
+    SL tres serre (0.3%) — scalping de breakout. Beaucoup de trades
+    mais ratio TP/SL de 13:1 compense le faible WR.
+    Sizing 35% — excellent ratio rendement/risque.
     """
 
     def __init__(self):
         super().__init__()
-        self.name = "sol_breakout_normal_1h"
+        self.name = "bnb_breakout_relaxed_1h"
         self.tp_pct = 0.04
-        self.sl_pct = 0.009
-        self.equity_pct = 0.15
+        self.sl_pct = 0.003
+        self.equity_pct = 0.35
         self.leverage = 5
-        self.cooldown_sec = 14400.0
+        self.cooldown_sec = 10800.0  # 3h (cooldown_bars=3)
         self.max_hold_sec = 172800.0
         self.entry_offset_pct = 0.0002
         self.entry_timeout_sec = 90.0
 
-        self.lookback = 14
-        self.vol_min = 2.5
-        self.max_wick_ratio = 0.40
+        self.lookback = 32
+        self.vol_min = 0.8
 
     def _scan_signals(self, ind, mid_price):
         if mid_price <= 0:
@@ -48,15 +50,6 @@ class SolBreakoutNormal1h(TemplateStrategy):
         if not candles or len(candles) < self.lookback + 2:
             return None
 
-        # Anti-wick filter: skip signals on high-wick candles (manipulation)
-        last_candle = candles[-2]
-        body = abs(last_candle.close - last_candle.open)
-        total_range = last_candle.high - last_candle.low
-        if total_range > 0:
-            wick_ratio = 1 - body / total_range
-            if wick_ratio >= self.max_wick_ratio:
-                return None
-
         recent = candles[-(self.lookback + 1):-1]
         rolling_high = max(c.high for c in recent)
         rolling_low = min(c.low for c in recent)
@@ -65,12 +58,14 @@ class SolBreakoutNormal1h(TemplateStrategy):
 
         if mid_price > rolling_high and trend_bull:
             self.api.log(logging.INFO,
-                         f"BREAKOUT UP: {mid_price:.2f} > {rolling_high:.2f} vol={ind.vol_ratio:.1f}")
+                         "BREAKOUT UP: %.2f > %.2f vol=%.1f" %
+                         (mid_price, rolling_high, ind.vol_ratio))
             return {"side": "buy", "signal": "BREAKOUT_UP"}
 
         if mid_price < rolling_low and not trend_bull:
             self.api.log(logging.INFO,
-                         f"BREAKOUT DOWN: {mid_price:.2f} < {rolling_low:.2f} vol={ind.vol_ratio:.1f}")
+                         "BREAKOUT DOWN: %.2f < %.2f vol=%.1f" %
+                         (mid_price, rolling_low, ind.vol_ratio))
             return {"side": "sell", "signal": "BREAKOUT_DOWN"}
 
         return None
@@ -78,6 +73,7 @@ class SolBreakoutNormal1h(TemplateStrategy):
     def _sentiment_ok(self):
         sentiment = self.api.get_sentiment(self.coin)
         if sentiment < self.api.config.sentiment.hard_block_threshold:
-            self.api.log(logging.WARNING, f"Trade blocked — sentiment {sentiment:.2f}")
+            self.api.log(logging.WARNING,
+                         "Trade blocked — sentiment %.2f" % sentiment)
             return False
         return True

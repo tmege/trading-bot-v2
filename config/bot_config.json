@@ -41,6 +41,24 @@
         ],
         "paper_mode": true,
         "paper_balance": 1000.0
+      },
+      {
+        "file": "xrp_mean_reversion_bb_1h.py",
+        "role": "",
+        "coins": [
+          "XRP"
+        ],
+        "paper_mode": true,
+        "paper_balance": 1000.0
+      },
+      {
+        "file": "bnb_breakout_relaxed_1h.py",
+        "role": "",
+        "coins": [
+          "BNB"
+        ],
+        "paper_mode": true,
+        "paper_balance": 1000.0
       }
     ]
   },

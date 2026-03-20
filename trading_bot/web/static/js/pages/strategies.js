@@ -50,10 +50,12 @@
       const statusBadge = s.status === 'ERRORED' ? '<span class="badge badge-red">ERRORED</span>' : s.status === 'DISABLED' ? '<span class="badge badge-gray">DISABLED</span>' : s.status === 'STOPPED' ? '<span class="badge badge-yellow">STOPPED</span>' : '';
       const wrWarn = s.win_rate !== null && s.win_rate < 30 ? ' c-red' : '';
 
+      const eqBadge = s.equity_pct != null ? `<span class="badge badge-gray" style="font-size:10px;">${Math.round(s.equity_pct * 100)}% × ${s.leverage || '?'}x</span>` : '';
+
       return `<div style="padding:12px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="TB._selectStrategy('${TB.utils.esc(s.name)}')">
         <div class="flex gap-8 mb-12" style="align-items:center;flex-wrap:wrap;">
           <strong>${TB.utils.esc(s.name)}</strong>
-          ${roleBadge} ${modeBadge} ${statusBadge}
+          ${eqBadge} ${roleBadge} ${modeBadge} ${statusBadge}
         </div>
         <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">Coins: ${s.coins.map(c => `<span class="badge badge-gray">${TB.utils.esc(c)}</span>`).join(' ')}</div>
         <div class="flex gap-16" style="font-size:12px;">
