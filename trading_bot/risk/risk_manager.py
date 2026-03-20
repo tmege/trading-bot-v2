@@ -16,9 +16,9 @@ class RiskManager:
     def __init__(self, config: RiskConfig):
         self._config = config
         self._paused = False
-        self._daily_pnl = 0.0
-        self._daily_fees = 0.0
-        self._daily_trades = 0
+        self._daily_pnl: dict[str, float] = {}
+        self._daily_fees: dict[str, float] = {}
+        self._daily_trades: dict[str, int] = {}
         self._last_reset_day = -1
         self._price_history: dict[str, deque] = {}
         self._circuit_breaker_coins: set[str] = set()
@@ -45,7 +45,7 @@ class RiskManager:
         self,
         req: OrderRequest,
         account_value: float,
-        daily_pnl: float,
+        strategy: str,
     ) -> tuple[bool, str]:
         self._maybe_reset_daily()
 
@@ -53,9 +53,10 @@ class RiskManager:
             return False, "trading paused"
 
         if self._config.daily_loss_pct > 0:
+            daily_pnl = self._daily_pnl.get(strategy, 0.0)
             max_loss = account_value * self._config.daily_loss_pct / 100.0
             if abs(daily_pnl) > max_loss and daily_pnl < 0:
-                return False, f"daily loss limit {daily_pnl:.2f} > {max_loss:.2f}"
+                return False, f"daily loss limit {daily_pnl:.2f} > {max_loss:.2f} [{strategy}]"
 
         notional = req.price.to_float() * req.size.to_float()
 
@@ -110,41 +111,72 @@ class RiskManager:
     def get_total_exposure(self) -> float:
         return sum(abs(v) for v in self._positions_notional.values())
 
-    def record_trade(self, pnl: float, fee: float) -> None:
-        self._daily_pnl += pnl
-        self._daily_fees += fee
-        self._daily_trades += 1
+    def record_trade(self, strategy: str, pnl: float, fee: float) -> None:
+        self._daily_pnl[strategy] = self._daily_pnl.get(strategy, 0.0) + pnl
+        self._daily_fees[strategy] = self._daily_fees.get(strategy, 0.0) + fee
+        self._daily_trades[strategy] = self._daily_trades.get(strategy, 0) + 1
+
+    def get_strategy_daily_pnl(self, strategy: str) -> float:
+        return self._daily_pnl.get(strategy, 0.0)
+
+    def get_total_daily_pnl(self) -> float:
+        return sum(self._daily_pnl.values())
+
+    def get_total_daily_fees(self) -> float:
+        return sum(self._daily_fees.values())
+
+    def get_total_daily_trades(self) -> int:
+        return sum(self._daily_trades.values())
 
     def _maybe_reset_daily(self) -> None:
         now = datetime.now(timezone.utc)
         day = now.timetuple().tm_yday
         if day != self._last_reset_day:
-            self._daily_pnl = 0.0
-            self._daily_fees = 0.0
-            self._daily_trades = 0
+            self._daily_pnl.clear()
+            self._daily_fees.clear()
+            self._daily_trades.clear()
             self._last_reset_day = day
             log.info("Daily risk counters reset")
 
     def to_dict(self) -> dict:
         return {
-            "daily_pnl": self._daily_pnl,
-            "daily_fees": self._daily_fees,
-            "daily_trades": self._daily_trades,
+            "daily_pnl": dict(self._daily_pnl),
+            "daily_fees": dict(self._daily_fees),
+            "daily_trades": dict(self._daily_trades),
             "last_reset_day": self._last_reset_day,
             "circuit_breaker_coins": sorted(self._circuit_breaker_coins),
             "paused": self._paused,
         }
 
     def from_dict(self, d: dict) -> None:
-        self._daily_pnl = d.get("daily_pnl", 0.0)
-        self._daily_fees = d.get("daily_fees", 0.0)
-        self._daily_trades = d.get("daily_trades", 0)
+        raw_pnl = d.get("daily_pnl", {})
+        raw_fees = d.get("daily_fees", {})
+        raw_trades = d.get("daily_trades", {})
+
+        # Backward compat: old format stored scalar values
+        if isinstance(raw_pnl, dict):
+            self._daily_pnl = raw_pnl
+        else:
+            self._daily_pnl = {"__legacy__": float(raw_pnl)} if raw_pnl else {}
+
+        if isinstance(raw_fees, dict):
+            self._daily_fees = raw_fees
+        else:
+            self._daily_fees = {"__legacy__": float(raw_fees)} if raw_fees else {}
+
+        if isinstance(raw_trades, dict):
+            self._daily_trades = raw_trades
+        else:
+            self._daily_trades = {"__legacy__": int(raw_trades)} if raw_trades else {}
+
         self._last_reset_day = d.get("last_reset_day", -1)
-        # Backward compat: old format had "circuit_breaker_active" (bool)
         cb_coins = d.get("circuit_breaker_coins")
         if cb_coins is not None:
             self._circuit_breaker_coins = set(cb_coins)
         else:
             self._circuit_breaker_coins = set()
         self._paused = d.get("paused", False)
-        log.info(f"Risk manager state restored: pnl={self._daily_pnl:.4f}, fees={self._daily_fees:.4f}, trades={self._daily_trades}")
+        total_pnl = self.get_total_daily_pnl()
+        total_fees = self.get_total_daily_fees()
+        total_trades = self.get_total_daily_trades()
+        log.info(f"Risk manager state restored: pnl={total_pnl:.4f}, fees={total_fees:.4f}, trades={total_trades}")

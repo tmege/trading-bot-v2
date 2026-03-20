@@ -96,8 +96,7 @@ class OrderManager:
         if self._risk_manager and not req.reduce_only:
             try:
                 account_value = self.get_account_value(strategy)
-                daily_pnl = self._risk_manager._daily_pnl
-                allowed, reason = self._risk_manager.check_order(req, account_value, daily_pnl)
+                allowed, reason = self._risk_manager.check_order(req, account_value, strategy)
                 if not allowed:
                     log.warning("Order blocked by risk manager [%s]: %s %s %s — %s",
                                 strategy, req.side, req.size, req.coin, reason)

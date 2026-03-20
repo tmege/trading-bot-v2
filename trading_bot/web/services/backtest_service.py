@@ -406,8 +406,8 @@ def _run_backtest_thread(
                     "coin_idx": i, "total_coins": len(run.coins),
                 })
 
-                # Walk-forward analysis (70/30 split)
-                wf = _walk_forward_v2(df_1h, v2_cls, mapping["v2_params"], bt, ec, sig_filter)
+                # Walk-forward analysis (anchored expanding windows with gap)
+                wf = _walk_forward_rolling(df_1h, v2_cls, mapping["v2_params"], bt, ec, sig_filter)
 
                 # Monte Carlo
                 trades_detail = metrics.get("trades_detail", [])
@@ -532,6 +532,138 @@ def _walk_forward_v2(df_1h, v2_cls, v2_params, bt, ec, sig_filter):
     except Exception:
         log.exception("Walk-forward analysis failed")
         return None
+
+
+def _walk_forward_rolling(df_1h, v2_cls, v2_params, bt, ec, sig_filter):
+    """Anchored expanding walk-forward with 2-week gap between IS and OOS.
+
+    Windows:
+      Window 1: train [0 : 50%],        gap 336 bars, test [50%+336 : 50%+336+step]
+      Window 2: train [0 : 50%+step],   gap 336 bars, test [50%+2*step+336 : ...]
+      ...
+    Minimum 5 OOS windows, minimum 100 bars per OOS window.
+    """
+    total_bars = len(df_1h)
+    if total_bars < 500:
+        return _walk_forward_v2(df_1h, v2_cls, v2_params, bt, ec, sig_filter)
+
+    try:
+        gap_bars = 336  # 14 days x 24h
+        min_windows = 5
+        min_oos_bars = 100
+        initial_train_end = int(total_bars * 0.50)
+
+        # Auto-calculate step size to get at least min_windows OOS windows
+        remaining = total_bars - initial_train_end
+        step_bars = max(min_oos_bars, (remaining - gap_bars) // (min_windows + 1))
+
+        windows = []
+        w = 0
+
+        while True:
+            train_end = initial_train_end + w * step_bars
+            oos_start = train_end + gap_bars
+            oos_end = oos_start + step_bars
+
+            # Bounds check
+            if train_end > total_bars or oos_start >= total_bars:
+                break
+            if oos_end > total_bars:
+                oos_end = total_bars
+            if oos_end - oos_start < min_oos_bars:
+                break
+
+            is_df = df_1h.iloc[:train_end]
+            oos_df = df_1h.iloc[oos_start:oos_end]
+
+            # Run IS backtest
+            strat_is = v2_cls(v2_params)
+            sig_is = strat_is.generate_signals(is_df)
+            if sig_filter:
+                sig_is = sig_filter(sig_is, is_df)
+            m_is = bt.run(
+                is_df, sig_is,
+                sl_pct=strat_is.sl_pct, tp_pct=strat_is.tp_pct,
+                exec_config=ec, initial_equity=INITIAL_EQUITY,
+            )
+
+            # Run OOS backtest
+            strat_oos = v2_cls(v2_params)
+            sig_oos = strat_oos.generate_signals(oos_df)
+            if sig_filter:
+                sig_oos = sig_filter(sig_oos, oos_df)
+            m_oos = bt.run(
+                oos_df, sig_oos,
+                sl_pct=strat_oos.sl_pct, tp_pct=strat_oos.tp_pct,
+                exec_config=ec, initial_equity=INITIAL_EQUITY,
+            )
+
+            is_ret = m_is["total_return"] * 100
+            oos_ret = m_oos["total_return"] * 100
+            is_sharpe = m_is["sharpe_ratio"]
+            oos_sharpe = m_oos["sharpe_ratio"]
+
+            windows.append({
+                "window": w + 1,
+                "train_bars": train_end,
+                "oos_bars": oos_end - oos_start,
+                "is_return": round(is_ret, 2),
+                "oos_return": round(oos_ret, 2),
+                "is_sharpe": round(is_sharpe, 3),
+                "oos_sharpe": round(oos_sharpe, 3),
+                "oos_profitable": oos_ret > 0,
+            })
+
+            w += 1
+
+        if not windows:
+            return _walk_forward_v2(df_1h, v2_cls, v2_params, bt, ec, sig_filter)
+
+        # Aggregate metrics
+        is_sharpes = [win["is_sharpe"] for win in windows]
+        oos_sharpes = [win["oos_sharpe"] for win in windows]
+        is_returns = [win["is_return"] for win in windows]
+        oos_returns = [win["oos_return"] for win in windows]
+
+        mean_is_sharpe = float(np.mean(is_sharpes)) if is_sharpes else 0
+        mean_oos_sharpe = float(np.mean(oos_sharpes)) if oos_sharpes else 0
+        mean_is_return = float(np.mean(is_returns)) if is_returns else 0
+        mean_oos_return = float(np.mean(oos_returns)) if oos_returns else 0
+
+        overfit_score = (mean_oos_sharpe / mean_is_sharpe) if abs(mean_is_sharpe) > 0.01 else 0
+        decay_pct = ((mean_oos_return - mean_is_return) / abs(mean_is_return) * 100) if abs(mean_is_return) > 0.01 else 0
+        oos_consistency = sum(1 for w in windows if w["oos_profitable"]) / len(windows)
+
+        aggregate = {
+            "n_windows": len(windows),
+            "gap_bars": gap_bars,
+            "mean_is_return": round(mean_is_return, 2),
+            "mean_oos_return": round(mean_oos_return, 2),
+            "mean_is_sharpe": round(mean_is_sharpe, 3),
+            "mean_oos_sharpe": round(mean_oos_sharpe, 3),
+            "overfit_score": round(overfit_score, 3),
+            "overfit_alert": overfit_score < 0.5,
+            "decay_pct": round(decay_pct, 2),
+            "oos_consistency": round(oos_consistency, 3),
+        }
+
+        # Legacy format for GUI backward compatibility
+        legacy = {
+            "is_return": round(mean_is_return, 2),
+            "oos_return": round(mean_oos_return, 2),
+            "decay_pct": round(decay_pct, 2),
+            "overfit_alert": overfit_score < 0.5,
+        }
+
+        return {
+            "windows": windows,
+            "aggregate": aggregate,
+            **legacy,
+        }
+
+    except Exception:
+        log.exception("Walk-forward rolling analysis failed")
+        return _walk_forward_v2(df_1h, v2_cls, v2_params, bt, ec, sig_filter)
 
 
 # ═══════════════════════════════════════════════════════════════

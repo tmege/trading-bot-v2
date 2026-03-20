@@ -426,7 +426,7 @@ class Engine:
 
         if self.risk_manager:
             self.risk_manager.record_trade(
-                fill.closed_pnl.to_float(), fill.fee.to_float()
+                strategy, fill.closed_pnl.to_float(), fill.fee.to_float()
             )
 
     # --- Timer ---
@@ -464,7 +464,7 @@ class Engine:
             if account_value <= 0:
                 return
 
-            realized_pnl = self.risk_manager._daily_pnl
+            realized_pnl = self.risk_manager.get_total_daily_pnl()
             unrealized_pnl = self._get_total_unrealized_pnl()
             total_pnl = realized_pnl + unrealized_pnl
 

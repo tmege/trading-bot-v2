@@ -31,15 +31,7 @@
         ],
         "paper_mode": true
       },
-      {
-        "file": "eth_breakout_relaxed_1h.py",
-        "role": "",
-        "coins": [
-          "ETH"
-        ],
-        "paper_mode": true
-      },
-      {
+{
         "file": "xrp_mean_reversion_bb_1h.py",
         "role": "",
         "coins": [
