@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import signal
 import threading
 import time
 
@@ -40,6 +41,14 @@ def main():
 
     stop_event = threading.Event()
     ready_event = threading.Event()
+
+    # B-01: Handle SIGTERM/SIGHUP for graceful shutdown
+    def _signal_handler(signum, frame):
+        log.info("Received signal %d — shutting down", signum)
+        stop_event.set()
+
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGHUP, _signal_handler)
 
     # 1. Start engine in daemon thread
     engine_thread = threading.Thread(

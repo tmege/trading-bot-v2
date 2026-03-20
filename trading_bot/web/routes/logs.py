@@ -54,19 +54,20 @@ async def get_logs(n: int = Query(default=50, le=500)):
 
 @router.get("/stream")
 async def stream_logs():
-    from trading_bot.web.app import _sse_connections, _MAX_SSE
     import trading_bot.web.app as _app_mod
 
-    # V-13: SSE connection limit
-    if _app_mod._sse_connections >= _MAX_SSE:
-        async def _too_many():
-            yield "data: Too many SSE connections\n\n"
-        return StreamingResponse(_too_many(), media_type="text/event-stream")
+    # H-03: Thread-safe SSE connection limit
+    with _app_mod._conn_lock:
+        if _app_mod._sse_connections >= _app_mod._MAX_SSE:
+            async def _too_many():
+                yield "data: Too many SSE connections\n\n"
+            return StreamingResponse(_too_many(), media_type="text/event-stream")
 
     log_path = _get_log_path()
 
     async def event_generator():
-        _app_mod._sse_connections += 1
+        with _app_mod._conn_lock:
+            _app_mod._sse_connections += 1
         try:
             last_size = 0
             if log_path.exists():
@@ -98,7 +99,8 @@ async def stream_logs():
                 except Exception:
                     await asyncio.sleep(1)
         finally:
-            _app_mod._sse_connections -= 1
+            with _app_mod._conn_lock:
+                _app_mod._sse_connections -= 1
 
     return StreamingResponse(
         event_generator(),

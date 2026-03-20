@@ -69,6 +69,18 @@
       </div>
 
       <div class="card mb-16">
+        <div class="card-header">Paper Trading</div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Paper Balance ($)</label>
+              <input id="mode-paper-balance" type="number" class="input" style="width:140px;" min="0" step="100" value="${s.mode.paper_initial_balance}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-16">
         <div class="card-header">Strategies</div>
         <div class="card-body" id="settings-strategies"></div>
       </div>
@@ -101,10 +113,6 @@
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <div class="form-group">
-            <label>Paper Balance</label>
-            <input id="strat-balance-${idx}" type="number" class="input" style="width:100px;" value="${strat.paper_balance || 500}">
-          </div>
         </div>
       </div>
     `).join('');
@@ -120,20 +128,22 @@
       max_leverage: parseInt(document.getElementById('risk-max-lev').value),
     };
 
+    const mode = {
+      paper_initial_balance: parseFloat(document.getElementById('mode-paper-balance').value) || 500,
+    };
+
     const strategies = settingsData.strategies.map((strat, idx) => {
       const paperMode = document.getElementById('strat-paper-' + idx).checked;
-      const paperBalance = parseFloat(document.getElementById('strat-balance-' + idx).value) || 500;
 
       return {
         file: strat.file,
         role: strat.role,
         coins: strat.coins,
         paper_mode: paperMode,
-        paper_balance: paperBalance,
       };
     });
 
-    const result = await TB.api.put('/api/settings', { risk, strategies });
+    const result = await TB.api.put('/api/settings', { risk, mode, strategies });
     if (result && result.status === 'ok') {
       TB.toast.show('success', 'Configuration saved');
       if (result.restart_required) {

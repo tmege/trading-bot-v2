@@ -21,8 +21,7 @@
         "coins": [
           "BTC"
         ],
-        "paper_mode": true,
-        "paper_balance": 1000.0
+        "paper_mode": true
       },
       {
         "file": "sol_breakout_normal_1h.py",
@@ -30,8 +29,7 @@
         "coins": [
           "SOL"
         ],
-        "paper_mode": true,
-        "paper_balance": 1000.0
+        "paper_mode": true
       },
       {
         "file": "eth_breakout_relaxed_1h.py",
@@ -39,8 +37,7 @@
         "coins": [
           "ETH"
         ],
-        "paper_mode": true,
-        "paper_balance": 1000.0
+        "paper_mode": true
       }
     ]
   },
@@ -53,7 +50,7 @@
   },
   "mode": {
     "paper_trading": false,
-    "paper_initial_balance": 500
+    "paper_initial_balance": 1000.0
   },
   "sentiment": {
     "enabled": true,

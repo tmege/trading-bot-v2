@@ -8,6 +8,7 @@ from trading_bot.types import (
 )
 from trading_bot.exchange.rest import RestClient
 from trading_bot.exchange.paper_exchange import PaperExchange
+from trading_bot.risk.risk_manager import RiskManager
 from trading_bot.db import Database
 
 log = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class OrderManager:
         global_paper: PaperExchange | None = None,
         is_global_paper: bool = False,
         vault_address: str | None = None,
+        risk_manager: RiskManager | None = None,
     ):
         self._rest = rest
         self._db = db
@@ -31,6 +33,7 @@ class OrderManager:
         self._global_paper = global_paper
         self._is_global_paper = is_global_paper
         self._vault_address = vault_address
+        self._risk_manager = risk_manager
 
         self._strategy_papers: dict[str, PaperExchange] = {}
         self._strategy_coins: dict[str, str] = {}
@@ -89,6 +92,19 @@ class OrderManager:
         self, strategy: str, req: OrderRequest,
         vault_override: str | None = None,
     ) -> int:
+        # Risk check — skip for reduce_only (position closing must always work)
+        if self._risk_manager and not req.reduce_only:
+            try:
+                account_value = self.get_account_value(strategy)
+                daily_pnl = self._risk_manager._daily_pnl
+                allowed, reason = self._risk_manager.check_order(req, account_value, daily_pnl)
+                if not allowed:
+                    log.warning("Order blocked by risk manager [%s]: %s %s %s — %s",
+                                strategy, req.side, req.size, req.coin, reason)
+                    return 0
+            except Exception:
+                log.exception("Risk check failed — allowing order (fail-open)")
+
         paper = self._get_exchange(strategy)
 
         if paper:

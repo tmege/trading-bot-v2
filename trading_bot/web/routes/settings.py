@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -13,6 +14,8 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 _engine = None
 _config_path = "config/bot_config.json"
+# M-08: Lock to prevent concurrent config writes
+_config_lock = threading.Lock()
 
 
 def init(engine, config_path: str = "config/bot_config.json"):
@@ -34,7 +37,6 @@ async def get_settings():
             "role": entry.role,
             "coins": entry.coins,
             "paper_mode": entry.paper_mode,
-            "paper_balance": entry.paper_balance,
         })
 
     return {
@@ -43,6 +45,9 @@ async def get_settings():
             "emergency_close_pct": cfg.risk.emergency_close_pct,
             "max_position_pct": cfg.risk.max_position_pct,
             "max_leverage": cfg.risk.max_leverage,
+        },
+        "mode": {
+            "paper_initial_balance": cfg.mode.paper_initial_balance,
         },
         "strategies": strategies,
     }
@@ -117,23 +122,30 @@ async def update_settings(request: Request):
             }
             if "paper_mode" in s and s["paper_mode"] is not None:
                 entry["paper_mode"] = bool(s["paper_mode"])
-            if "paper_balance" in s:
-                entry["paper_balance"] = max(0, float(s["paper_balance"]))
 
             new_strategies.append(entry)
 
         config_data.setdefault("strategies", {})["active"] = new_strategies
         restart_required = True
 
-    try:
-        dir_path = resolved.parent
-        fd, tmp_path = tempfile.mkstemp(dir=str(dir_path), suffix=".json")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=2)
-        os.replace(tmp_path, str(resolved))
-    except Exception:
-        log.exception("Failed to save config")
-        return {"error": "failed to save config", "status": "error"}
+    if "mode" in body:
+        m = body["mode"]
+        if "paper_initial_balance" in m:
+            v = max(0, float(m["paper_initial_balance"]))
+            config_data.setdefault("mode", {})["paper_initial_balance"] = v
+            restart_required = True
+
+    # M-08: Serialize config writes with lock
+    with _config_lock:
+        try:
+            dir_path = resolved.parent
+            fd, tmp_path = tempfile.mkstemp(dir=str(dir_path), suffix=".json")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=2)
+            os.replace(tmp_path, str(resolved))
+        except Exception:
+            log.exception("Failed to save config")
+            return {"error": "failed to save config", "status": "error"}
 
     return {
         "status": "ok",

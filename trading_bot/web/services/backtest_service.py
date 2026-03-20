@@ -23,8 +23,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# Add crypto_bot to path for V2 engine imports
+# H-05: Add crypto_bot to path with validation
 _CRYPTO_BOT_DIR = str(Path(__file__).resolve().parents[3] / "crypto_bot")
+if not os.path.isdir(_CRYPTO_BOT_DIR):
+    raise ImportError(f"crypto_bot directory not found: {_CRYPTO_BOT_DIR}")
+# Validate no stdlib shadow modules exist
+for _shadow in ("os", "sys", "json", "re", "time", "logging", "pathlib", "io",
+                "http", "socket", "subprocess", "threading", "asyncio", "httpx"):
+    if os.path.exists(os.path.join(_CRYPTO_BOT_DIR, f"{_shadow}.py")):
+        raise ImportError(f"SECURITY: crypto_bot contains stdlib shadow module: {_shadow}.py")
 if _CRYPTO_BOT_DIR not in sys.path:
     sys.path.insert(0, _CRYPTO_BOT_DIR)
 
@@ -155,6 +162,11 @@ SIGNAL_FILTERS = {
 # Data types & state
 # ═══════════════════════════════════════════════════════════════
 
+# H-02: Limit concurrent backtests
+_MAX_CONCURRENT_BACKTESTS = 2
+_MAX_CANDLES_PER_QUERY = 200_000
+
+
 @dataclass
 class BacktestRun:
     run_id: str
@@ -162,10 +174,12 @@ class BacktestRun:
     coins: list[str]
     status: str = "pending"
     results: dict = field(default_factory=dict)
-    queue: queue_mod.Queue = field(default_factory=queue_mod.Queue)
+    queue: queue_mod.Queue = field(default_factory=lambda: queue_mod.Queue(maxsize=500))
     error: str = ""
 
 
+# M-09: Thread-safe access to _runs
+_runs_lock = threading.Lock()
 _runs: dict[str, BacktestRun] = {}
 _fe: FeatureEngine | None = None
 
@@ -218,14 +232,20 @@ def start_run(
     start_ms: int = 0,
     end_ms: int = 0,
 ) -> str:
-    run_id = uuid.uuid4().hex[:12]
-    run = BacktestRun(
-        run_id=run_id,
-        strategy=strategy_file,
-        coins=coins,
-        status="running",
-    )
-    _runs[run_id] = run
+    # H-02: Limit concurrent backtests
+    with _runs_lock:
+        running = sum(1 for r in _runs.values() if r.status == "running")
+        if running >= _MAX_CONCURRENT_BACKTESTS:
+            raise RuntimeError(f"Max {_MAX_CONCURRENT_BACKTESTS} concurrent backtests allowed")
+
+        run_id = uuid.uuid4().hex[:12]
+        run = BacktestRun(
+            run_id=run_id,
+            strategy=strategy_file,
+            coins=coins,
+            status="running",
+        )
+        _runs[run_id] = run
 
     t = threading.Thread(
         target=_run_backtest_thread,
@@ -237,7 +257,8 @@ def start_run(
 
 
 def get_run(run_id: str) -> BacktestRun | None:
-    return _runs.get(run_id)
+    with _runs_lock:
+        return _runs.get(run_id)
 
 
 def get_history(db: Database, limit: int = 500) -> list[dict]:
@@ -397,8 +418,8 @@ def _run_backtest_thread(
 
                 # Convert to GUI format
                 result_dict = _convert_to_gui(metrics, df_1h)
-                result_dict["walk_forward"] = wf
-                result_dict["monte_carlo"] = mc
+                result_dict["walk_forward"] = _sanitize_for_json(wf) if wf else None
+                result_dict["monte_carlo"] = _sanitize_for_json(mc) if mc else {}
                 result_dict["verdict"] = _compute_verdict(metrics)
 
                 run.results[coin] = result_dict
@@ -446,7 +467,8 @@ def _load_candles_df(
         query += " AND time_open <= ?"
         params.append(end_ms)
 
-    query += " ORDER BY time_open"
+    # H-02: Cap candles to prevent memory exhaustion
+    query += f" ORDER BY time_open LIMIT {_MAX_CANDLES_PER_QUERY}"
     rows = db.fetchall(query, tuple(params))
 
     if not rows:
@@ -573,7 +595,7 @@ def _convert_to_gui(metrics: dict, df_1h: pd.DataFrame) -> dict:
             "balance_after": round(t["equity_after"], 4),
         })
 
-    return {
+    return _sanitize_for_json({
         "start_balance": initial,
         "end_balance": round(final, 4),
         "total_pnl": round(final - initial, 4),
@@ -593,7 +615,7 @@ def _convert_to_gui(metrics: dict, df_1h: pd.DataFrame) -> dict:
         "sortino_ratio": round(sortino, 4),
         "equity_curve": equity_curve,
         "trades": gui_trades,
-    }
+    })
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -649,6 +671,25 @@ def _save_to_history(db, run_id, strategy, coin, metrics, result_dict):
         db.commit()
     except Exception:
         log.exception("Error saving backtest to history")
+
+
+def _sanitize_for_json(obj):
+    """Recursively convert numpy/pandas types to native Python for json.dumps()."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, pd.Timestamp):
+        return int(obj.timestamp() * 1000)
+    return obj
 
 
 def _ms_to_date(ms: int) -> str:

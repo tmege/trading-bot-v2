@@ -4,14 +4,16 @@ import logging
 import os
 import re
 import secrets
+import threading
 import time
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from trading_bot.web.routes import bot, account, strategies, market, trades, backtest, settings, logs
 
@@ -32,13 +34,34 @@ async def verify_api_key(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-# --- V-13: Connection limits ---
+# --- V-13: Connection limits (H-03: thread-safe) ---
+_conn_lock = threading.Lock()
 _ws_connections = 0
 _MAX_WS = 10
 _sse_connections = 0
 _MAX_SSE = 5
 
 ANSI_RE = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07')
+
+
+# --- M-12: Security headers middleware ---
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data:; "
+            "connect-src 'self' ws://127.0.0.1:*; "
+            "frame-ancestors 'none'"
+        )
+        return response
 
 
 def create_app(engine, stop_event=None) -> FastAPI:
@@ -49,6 +72,9 @@ def create_app(engine, stop_event=None) -> FastAPI:
     log.info("Web API key configured (length=%d)", len(_API_KEY))
 
     app = FastAPI(title="Trading Bot v2", docs_url=None, redoc_url=None)
+
+    # --- M-12: Security headers ---
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # --- V-06: CORS middleware — block all cross-origin requests ---
     app.add_middleware(
@@ -86,8 +112,9 @@ def create_app(engine, stop_event=None) -> FastAPI:
     async def index():
         html_path = static_dir / "index.html"
         html = html_path.read_text(encoding="utf-8")
-        # Inject API key into the page so JS can use it
-        inject = f'<script>window.__TB_API_KEY__="{_API_KEY}";</script>'
+        # M-07: Inject API key safely with JSON encoding to prevent XSS
+        safe_key = json.dumps(_API_KEY)
+        inject = f'<script>window.__TB_API_KEY__={safe_key};</script>'
         html = html.replace("</head>", inject + "\n</head>")
         return HTMLResponse(content=html)
 
@@ -100,12 +127,13 @@ def create_app(engine, stop_event=None) -> FastAPI:
             await websocket.close(code=4001, reason="Unauthorized")
             return
 
-        # V-13: Connection limit
+        # H-03: Thread-safe connection limit
         global _ws_connections
-        if _ws_connections >= _MAX_WS:
-            await websocket.close(code=4002, reason="Too many connections")
-            return
-        _ws_connections += 1
+        with _conn_lock:
+            if _ws_connections >= _MAX_WS:
+                await websocket.close(code=4002, reason="Too many connections")
+                return
+            _ws_connections += 1
 
         await websocket.accept()
         prev_mids: dict[str, float] = {}
@@ -147,9 +175,10 @@ def create_app(engine, stop_event=None) -> FastAPI:
         except WebSocketDisconnect:
             pass
         except Exception:
-            pass
+            log.debug("WebSocket error in ws_live")
         finally:
-            _ws_connections -= 1
+            with _conn_lock:
+                _ws_connections -= 1
 
     return app
 

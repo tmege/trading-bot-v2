@@ -6,7 +6,7 @@
     "vault_address": null
   },
   "risk": {
-    "daily_loss_pct": 10.0,
+    "daily_loss_pct": 6.0,
     "emergency_close_pct": 5.0,
     "max_leverage": 10,
     "max_position_pct": 700.0
@@ -21,8 +21,7 @@
         "coins": [
           "BTC"
         ],
-        "paper_mode": true,
-        "paper_balance": 1000.0
+        "paper_mode": true
       },
       {
         "file": "sol_breakout_normal_1h.py",
@@ -30,8 +29,7 @@
         "coins": [
           "SOL"
         ],
-        "paper_mode": true,
-        "paper_balance": 1000.0
+        "paper_mode": true
       },
       {
         "file": "eth_breakout_relaxed_1h.py",
@@ -39,8 +37,7 @@
         "coins": [
           "ETH"
         ],
-        "paper_mode": true,
-        "paper_balance": 1000.0
+        "paper_mode": true
       },
       {
         "file": "xrp_mean_reversion_bb_1h.py",
@@ -48,8 +45,7 @@
         "coins": [
           "XRP"
         ],
-        "paper_mode": true,
-        "paper_balance": 1000.0
+        "paper_mode": true
       },
       {
         "file": "bnb_breakout_relaxed_1h.py",
@@ -57,8 +53,7 @@
         "coins": [
           "BNB"
         ],
-        "paper_mode": true,
-        "paper_balance": 1000.0
+        "paper_mode": true
       }
     ]
   },
@@ -71,7 +66,7 @@
   },
   "mode": {
     "paper_trading": false,
-    "paper_initial_balance": 500
+    "paper_initial_balance": 1000.0
   },
   "sentiment": {
     "enabled": true,

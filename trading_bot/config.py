@@ -29,7 +29,6 @@ class StrategyEntry:
     role: str = ""
     coins: list[str] = field(default_factory=list)
     paper_mode: bool | None = None
-    paper_balance: float = 500.0
     vault_address: str | None = None
 
 
@@ -91,7 +90,6 @@ def _parse_strategy_entry(data: dict) -> StrategyEntry:
         role=data.get("role", ""),
         coins=data.get("coins", []),
         paper_mode=data.get("paper_mode"),
-        paper_balance=data.get("paper_balance", 500.0),
         vault_address=data.get("vault_address"),
     )
 
@@ -150,14 +148,15 @@ def load_config(config_path: str = "config/bot_config.json") -> BotConfig:
 
     if "sentiment" in raw:
         se = raw["sentiment"]
+        # M-11: Validate sentiment config bounds
         cfg.sentiment = SentimentConfig(
             enabled=se.get("enabled", True),
             claude_model=se.get("claude_model", "claude-haiku-4-5-20251001"),
-            max_tokens_per_hour=se.get("max_tokens_per_hour", 50000),
-            cache_ttl_sec=se.get("cache_ttl_sec", 900),
-            min_confidence=se.get("min_confidence", 0.5),
-            weight=se.get("weight", 0.3),
-            hard_block_threshold=se.get("hard_block_threshold", -0.7),
+            max_tokens_per_hour=int(_clamp(se.get("max_tokens_per_hour", 50000), 1000, 200000)),
+            cache_ttl_sec=int(_clamp(se.get("cache_ttl_sec", 900), 60, 86400)),
+            min_confidence=_clamp(se.get("min_confidence", 0.5), 0.0, 1.0),
+            weight=_clamp(se.get("weight", 0.3), 0.0, 1.0),
+            hard_block_threshold=_clamp(se.get("hard_block_threshold", -0.7), -1.0, 0.0),
         )
 
     _load_env(cfg)

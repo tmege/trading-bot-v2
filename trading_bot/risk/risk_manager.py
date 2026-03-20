@@ -21,9 +21,13 @@ class RiskManager:
         self._daily_trades = 0
         self._last_reset_day = -1
         self._price_history: dict[str, deque] = {}
-        self._circuit_breaker_active = False
+        self._circuit_breaker_coins: set[str] = set()
 
         self._positions_notional: dict[str, float] = {}
+
+    @property
+    def circuit_breaker_active(self) -> bool:
+        return bool(self._circuit_breaker_coins)
 
     @property
     def paused(self) -> bool:
@@ -65,8 +69,8 @@ class RiskManager:
             if notional > max_pos:
                 return False, f"position {notional:.2f} > max {max_pos:.2f}"
 
-        if self._circuit_breaker_active and not req.reduce_only:
-            return False, "circuit breaker active"
+        if req.coin in self._circuit_breaker_coins and not req.reduce_only:
+            return False, f"circuit breaker active for {req.coin}"
 
         return True, ""
 
@@ -92,13 +96,13 @@ class RiskManager:
             if oldest_price > 0:
                 move = abs(price - oldest_price) / oldest_price
                 if move > CIRCUIT_BREAKER_MOVE:
-                    if not self._circuit_breaker_active:
+                    if coin not in self._circuit_breaker_coins:
                         log.warning(
                             f"Circuit breaker triggered: {coin} moved {move*100:.1f}% in 15min"
                         )
-                        self._circuit_breaker_active = True
+                        self._circuit_breaker_coins.add(coin)
                 else:
-                    self._circuit_breaker_active = False
+                    self._circuit_breaker_coins.discard(coin)
 
     def update_position_notional(self, coin: str, notional: float) -> None:
         self._positions_notional[coin] = notional
@@ -127,7 +131,7 @@ class RiskManager:
             "daily_fees": self._daily_fees,
             "daily_trades": self._daily_trades,
             "last_reset_day": self._last_reset_day,
-            "circuit_breaker_active": self._circuit_breaker_active,
+            "circuit_breaker_coins": sorted(self._circuit_breaker_coins),
             "paused": self._paused,
         }
 
@@ -136,6 +140,11 @@ class RiskManager:
         self._daily_fees = d.get("daily_fees", 0.0)
         self._daily_trades = d.get("daily_trades", 0)
         self._last_reset_day = d.get("last_reset_day", -1)
-        self._circuit_breaker_active = d.get("circuit_breaker_active", False)
+        # Backward compat: old format had "circuit_breaker_active" (bool)
+        cb_coins = d.get("circuit_breaker_coins")
+        if cb_coins is not None:
+            self._circuit_breaker_coins = set(cb_coins)
+        else:
+            self._circuit_breaker_coins = set()
         self._paused = d.get("paused", False)
         log.info(f"Risk manager state restored: pnl={self._daily_pnl:.4f}, fees={self._daily_fees:.4f}, trades={self._daily_trades}")

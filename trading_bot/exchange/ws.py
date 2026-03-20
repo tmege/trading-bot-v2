@@ -168,7 +168,14 @@ class WebSocketClient:
         if isinstance(data, dict):
             data = [data]
         for c in data:
-            coin = c.get("s", "").replace("-USD", "").replace("USDT", "")
+            # B-04: Proper coin symbol extraction
+            raw_sym = c.get("s", "")
+            if raw_sym.endswith("-USD"):
+                coin = raw_sym[:-4]
+            elif raw_sym.endswith("USDT"):
+                coin = raw_sym[:-4]
+            else:
+                coin = raw_sym
             candle = Candle(
                 time_open=c.get("t", 0),
                 time_close=c.get("T", 0),

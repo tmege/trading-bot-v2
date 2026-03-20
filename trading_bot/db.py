@@ -86,6 +86,8 @@ class Database:
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
+        # M-10: Auto-checkpoint WAL to prevent unbounded file growth
+        self.conn.execute("PRAGMA wal_autocheckpoint=1000")
         self.conn.row_factory = sqlite3.Row
         self._create_tables()
         log.info(f"Database opened: {self.path}")

@@ -70,17 +70,20 @@ async def run_backtest(request: Request):
     strategies_dir = _engine.config.strategies.dir
     db_path = _engine.config.database.path
 
-    run_id = start_run(
-        strategy_file=strategy_file,
-        coins=coins,
-        db_path=db_path,
-        strategies_dir=strategies_dir,
-        initial_balance=initial_balance,
-        max_leverage=50,
-        interval_ms=interval_ms,
-        start_ms=start_ms,
-        end_ms=end_ms,
-    )
+    try:
+        run_id = start_run(
+            strategy_file=strategy_file,
+            coins=coins,
+            db_path=db_path,
+            strategies_dir=strategies_dir,
+            initial_balance=initial_balance,
+            max_leverage=50,
+            interval_ms=interval_ms,
+            start_ms=start_ms,
+            end_ms=end_ms,
+        )
+    except RuntimeError as e:
+        return {"error": str(e)}
 
     return {"run_id": run_id}
 
@@ -91,12 +94,13 @@ async def get_progress(run_id: str):
     import json
     import trading_bot.web.app as _app_mod
 
-    # V-13: SSE connection limit
-    if _app_mod._sse_connections >= _app_mod._MAX_SSE:
-        return StreamingResponse(
-            _error_stream("Too many SSE connections"),
-            media_type="text/event-stream",
-        )
+    # H-03: Thread-safe SSE connection limit
+    with _app_mod._conn_lock:
+        if _app_mod._sse_connections >= _app_mod._MAX_SSE:
+            return StreamingResponse(
+                _error_stream("Too many SSE connections"),
+                media_type="text/event-stream",
+            )
 
     # V-02: Validate run_id format (hex, max 12 chars)
     if not re.match(r'^[a-f0-9]{1,12}$', run_id):
@@ -113,21 +117,31 @@ async def get_progress(run_id: str):
         )
 
     async def event_generator():
-        _app_mod._sse_connections += 1
+        import queue as queue_mod
+        with _app_mod._conn_lock:
+            _app_mod._sse_connections += 1
         try:
             while True:
                 try:
                     msg = run.queue.get(timeout=0.5)
-                    yield f"data: {json.dumps(msg)}\n\n"
-                    if msg.get("type") in ("complete", "error"):
-                        break
-                except Exception:
+                except queue_mod.Empty:
                     if run.status in ("complete", "error"):
                         break
                     yield ": keepalive\n\n"
                     await asyncio.sleep(0.3)
+                    continue
+
+                try:
+                    yield f"data: {json.dumps(msg, default=str)}\n\n"
+                except (TypeError, ValueError):
+                    log.warning("SSE JSON serialization failed for msg type=%s", msg.get("type"))
+                    yield f"data: {json.dumps({'type': msg.get('type', 'error'), 'message': 'serialization error'})}\n\n"
+
+                if msg.get("type") in ("complete", "error"):
+                    break
         finally:
-            _app_mod._sse_connections -= 1
+            with _app_mod._conn_lock:
+                _app_mod._sse_connections -= 1
 
     return StreamingResponse(
         event_generator(),

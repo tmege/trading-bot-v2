@@ -40,6 +40,7 @@ class Engine:
         self._timer_task: asyncio.Task | None = None
         self._reload_task: asyncio.Task | None = None
         self._running = False
+        self._last_emergency_check: float = 0.0
         self._dashboard: Dashboard | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -70,12 +71,12 @@ class Engine:
         self._running = True
         self._loop = asyncio.get_event_loop()
 
-        # 1. Signer
+        # 1. Signer — C-02: try/finally ensures key is always wiped
         if cfg.private_key and not cfg.mode.paper_trading:
-            self.signer = Signer(cfg.private_key, cfg.exchange.is_testnet)
-            _wipe = cfg.private_key
-            cfg.private_key = ""
-            del _wipe
+            try:
+                self.signer = Signer(cfg.private_key, cfg.exchange.is_testnet)
+            finally:
+                cfg.private_key = ""
 
         # 2. REST client
         self.rest = RestClient(
@@ -108,6 +109,7 @@ class Engine:
             global_paper=self._global_paper,
             is_global_paper=cfg.mode.paper_trading,
             vault_address=cfg.exchange.vault_address,
+            risk_manager=self.risk_manager,
         )
         self.order_manager.set_fill_dispatch(self._on_strategy_fill)
 
@@ -240,7 +242,7 @@ class Engine:
                 if is_paper and not self.config.mode.paper_trading:
                     paper_ex = PaperExchange(
                         f"paper_{entry.file}",
-                        entry.paper_balance,
+                        self.config.mode.paper_initial_balance,
                     )
 
                 api = StrategyAPI(
@@ -375,6 +377,12 @@ class Engine:
             if self.risk_manager:
                 self.risk_manager.update_price(mid.coin, price)
 
+        # Throttled emergency close check (every 5s instead of every 60s)
+        now = time.time()
+        if now - self._last_emergency_check >= 5.0 and self._loop:
+            self._last_emergency_check = now
+            self._loop.create_task(self._check_emergency_close())
+
         for info in self._strategies:
             if info.errored or info.disabled or not info.instance:
                 continue
@@ -423,8 +431,25 @@ class Engine:
 
     # --- Timer ---
 
+    def _get_total_unrealized_pnl(self) -> float:
+        """Sum unrealized PnL across all strategy positions."""
+        total = 0.0
+        if not self.order_manager:
+            return total
+        for info in self._strategies:
+            if info.errored or info.disabled:
+                continue
+            for coin in info.coins:
+                try:
+                    pos = self.order_manager.get_position(info.name, coin)
+                    if pos and pos.unrealized_pnl:
+                        total += pos.unrealized_pnl.to_float() if hasattr(pos.unrealized_pnl, 'to_float') else float(pos.unrealized_pnl)
+                except Exception:
+                    pass
+        return total
+
     async def _check_emergency_close(self) -> None:
-        """Check if daily losses exceed emergency threshold and close all positions."""
+        """Check if daily losses (realized + unrealized) exceed emergency threshold."""
         if not self.risk_manager or not self.config:
             return
 
@@ -439,12 +464,15 @@ class Engine:
             if account_value <= 0:
                 return
 
-            daily_pnl = self.risk_manager._daily_pnl
+            realized_pnl = self.risk_manager._daily_pnl
+            unrealized_pnl = self._get_total_unrealized_pnl()
+            total_pnl = realized_pnl + unrealized_pnl
 
-            if self.risk_manager.check_emergency_close(account_value, daily_pnl):
+            if self.risk_manager.check_emergency_close(account_value, total_pnl):
                 log.critical(
-                    "EMERGENCY CLOSE: daily PnL $%.2f exceeds %.1f%% of $%.2f",
-                    daily_pnl, self.config.risk.emergency_close_pct, account_value,
+                    "EMERGENCY CLOSE: daily PnL $%.2f (realized $%.2f + unrealized $%.2f) exceeds %.1f%% of $%.2f",
+                    total_pnl, realized_pnl, unrealized_pnl,
+                    self.config.risk.emergency_close_pct, account_value,
                 )
                 await self._emergency_close_all()
         except Exception:

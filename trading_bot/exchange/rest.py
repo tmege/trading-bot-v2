@@ -22,6 +22,8 @@ class RateLimiter:
         self._backoff_ms = 100
 
     def acquire(self) -> None:
+        # M-06: Compute sleep time inside lock, sleep outside
+        sleep_s = 0.0
         with self._lock:
             now = time.monotonic()
             if now - self._window_start >= 60.0:
@@ -32,11 +34,13 @@ class RateLimiter:
             if self._count >= self._max:
                 sleep_s = self._backoff_ms / 1000.0
                 self._backoff_ms = min(self._backoff_ms * 2, 2000)
-                time.sleep(sleep_s)
                 self._count = 0
                 self._window_start = time.monotonic()
 
             self._count += 1
+
+        if sleep_s > 0:
+            time.sleep(sleep_s)
 
 
 class RestClient:
@@ -233,7 +237,8 @@ class RestClient:
         resp.raise_for_status()
         result = resp.json()
         if not isinstance(result, dict):
-            log.error(f"Exchange API returned non-dict: {result!r}")
+            # H-04: Don't log raw response content (may contain sensitive data)
+            log.error("Exchange API returned non-dict response (type=%s)", type(result).__name__)
         return result
 
     def place_order(

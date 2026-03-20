@@ -74,24 +74,25 @@ cp .env.example .env
         "file": "btc_inside_bar_breakout_1h.py",
         "role": "primary",
         "coins": ["BTC"],
-        "paper_mode": true,
-        "paper_balance": 500.0
+        "paper_mode": true
       },
       {
         "file": "eth_breakout_relaxed_1h.py",
         "role": "primary",
         "coins": ["ETH"],
-        "paper_mode": true,
-        "paper_balance": 500.0
+        "paper_mode": true
       },
       {
         "file": "sol_breakout_normal_1h.py",
         "role": "primary",
         "coins": ["SOL"],
-        "paper_mode": true,
-        "paper_balance": 500.0
+        "paper_mode": true
       }
     ]
+  },
+  "mode": {
+    "paper_trading": false,                      // Global paper trading mode
+    "paper_initial_balance": 1000.0              // Starting balance for paper strategies
   },
   "sentiment": {
     "enabled": true,                             // Enable sentiment analysis
