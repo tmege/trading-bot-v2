@@ -20,11 +20,11 @@
     '6-coin-uniform': {
       label: '6-Coin Uniform',
       stats: [
-        '3Y Return: +417%  |  MaxDD: 13.8%',
-        'Avg/month: +11.6% |  Win rate: ~14%',
-        'Semestres +: 6/6  |  Trades: ~4200',
-        'Ratio R/DD: 30.2x |  Best: DOGE +2217%',
-        'Profil: SL 0.3% / TP 4% / lb 32',
+        'Avg Return: +387% |  MaxDD: 6.2%',
+        'Avg/month: +5.0%  |  Sharpe: ~2.33',
+        'Semestres +: 6/6  |  Trades: ~9 356',
+        'Ratio R/DD: 62.1x |  Best: DOGE +792%',
+        'Profil: SL 0.3% / TP 4% / lb 32 / eq 16%',
       ],
     },
   };

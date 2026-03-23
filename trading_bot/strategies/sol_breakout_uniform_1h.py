@@ -6,16 +6,16 @@ from trading_bot.strategies.template import TemplateStrategy
 class SolBreakoutUniform1h(TemplateStrategy):
     """SOL Breakout Uniform 1H
     ========================
-    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 16% / lev 5x / no anti-wick
 
     Backtest realiste (2020-09 -> 2026-03) — compounding, frais maker/taker, funding :
-      Return   : +2 503%    Sharpe : 2.30   MaxDD : 13.0%   Trades : 1 889
-      PF       : 1.69       Fees   : $7 194
+      Return   : +363%      Sharpe : 2.28   MaxDD : 7.4%    Trades : 1 889
+      PF       : 1.68       Fees   : $1 023
 
     Contexte :
-      76% du PnL genere en 2024-2026 (effet compounding).
-      Plus grand nombre de trades du groupe (1 889). PF le plus bas (1.69)
-      mais Sharpe solide (2.30) — edge regulier malgre un WR de 14.4%.
+      Plus grand nombre de trades du groupe (1 889). PF le plus bas (1.68)
+      mais Sharpe solide (2.28) — edge regulier malgre un WR de 14.4%.
+      Equity 16% pour cohabitation safe 6 coins.
 
     Groupe : 6-coin-uniform
     """
@@ -25,7 +25,7 @@ class SolBreakoutUniform1h(TemplateStrategy):
         self.name = "sol_breakout_uniform_1h"
         self.tp_pct = 0.04
         self.sl_pct = 0.003
-        self.equity_pct = 0.35
+        self.equity_pct = 0.16
         self.leverage = 5
         self.cooldown_sec = 10800.0  # 3h (cooldown_bars=3)
         self.max_hold_sec = 172800.0

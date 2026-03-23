@@ -121,7 +121,17 @@ class OrderManager:
             log.error(f"Order API returned non-dict: {result}")
             return 0
 
-        statuses = result.get("response", {}).get("data", {}).get("statuses", [])
+        response = result.get("response", {})
+        if not isinstance(response, dict):
+            log.error(f"Order API response is not a dict: {response}")
+            return 0
+
+        data = response.get("data", {})
+        if not isinstance(data, dict):
+            log.error(f"Order API data is not a dict: {data}")
+            return 0
+
+        statuses = data.get("statuses", [])
         oid = 0
         if statuses:
             status = statuses[0]

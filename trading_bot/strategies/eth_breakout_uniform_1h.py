@@ -6,16 +6,15 @@ from trading_bot.strategies.template import TemplateStrategy
 class EthBreakoutUniform1h(TemplateStrategy):
     """ETH Breakout Uniform 1H
     ========================
-    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 16% / lev 5x / no anti-wick
 
     Backtest realiste (2019-11 -> 2026-03) — compounding, frais maker/taker, funding :
-      Return   : +3 255%    Sharpe : 2.26   MaxDD : 12.8%   Trades : 1 829
-      PF       : 1.76       Fees   : $9 541
+      Return   : +426%      Sharpe : 2.25   MaxDD : 6.6%    Trades : 1 829
+      PF       : 1.76       Fees   : $1 169
 
     Contexte :
-      66% du PnL genere en 2024-2026 (effet compounding).
-      Meilleur return absolu apres DOGE. Nombre de trades le plus eleve
-      du groupe (1 829) — bonne liquidite et volatilite suffisante.
+      Nombre de trades le plus eleve du groupe (1 829) — bonne liquidite
+      et volatilite suffisante. Equity 16% pour cohabitation safe 6 coins.
 
     Groupe : 6-coin-uniform
     """
@@ -25,7 +24,7 @@ class EthBreakoutUniform1h(TemplateStrategy):
         self.name = "eth_breakout_uniform_1h"
         self.tp_pct = 0.04
         self.sl_pct = 0.003
-        self.equity_pct = 0.35
+        self.equity_pct = 0.16
         self.leverage = 5
         self.cooldown_sec = 10800.0  # 3h (cooldown_bars=3)
         self.max_hold_sec = 172800.0

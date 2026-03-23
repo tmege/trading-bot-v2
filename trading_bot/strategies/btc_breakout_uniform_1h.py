@@ -6,16 +6,16 @@ from trading_bot.strategies.template import TemplateStrategy
 class BtcBreakoutUniform1h(TemplateStrategy):
     """BTC Breakout Uniform 1H
     ========================
-    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 16% / lev 5x / no anti-wick
 
     Backtest realiste (2019-09 -> 2026-03) — compounding, frais maker/taker, funding :
-      Return   : +2 324%    Sharpe : 2.10   MaxDD : 13.9%   Trades : 1 697
-      PF       : 1.75       Fees   : $7 393
+      Return   : +371%      Sharpe : 2.13   MaxDD : 8.0%    Trades : 1 697
+      PF       : 1.77       Fees   : $1 031
 
     Contexte :
       Repartition du PnL relativement lineaire sur toute la periode.
       BTC = actif le moins volatile du groupe — breakouts moins explosifs
-      mais plus reguliers. Drawdown le plus eleve (13.9%) du portefeuille.
+      mais plus reguliers. Equity 16% pour cohabitation safe 6 coins.
 
     Groupe : 6-coin-uniform
     """
@@ -25,7 +25,7 @@ class BtcBreakoutUniform1h(TemplateStrategy):
         self.name = "btc_breakout_uniform_1h"
         self.tp_pct = 0.04
         self.sl_pct = 0.003
-        self.equity_pct = 0.35
+        self.equity_pct = 0.16
         self.leverage = 5
         self.cooldown_sec = 10800.0  # 3h (cooldown_bars=3)
         self.max_hold_sec = 172800.0

@@ -6,16 +6,15 @@ from trading_bot.strategies.template import TemplateStrategy
 class BnbBreakoutUniform1h(TemplateStrategy):
     """BNB Breakout Uniform 1H
     ========================
-    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 16% / lev 5x / no anti-wick
 
     Backtest realiste (2022-01 -> 2026-03) — compounding, frais maker/taker, funding :
-      Return   : +673%      Sharpe : 2.06   MaxDD : 10.2%   Trades : 1 178
-      PF       : 1.71       Fees   : $1 933
+      Return   : +163%      Sharpe : 2.06   MaxDD : 4.8%    Trades : 1 178
+      PF       : 1.71       Fees   : $450
 
     Contexte :
-      84% du PnL genere en 2024-2026 (effet compounding).
       Historique le plus court (4 ans) avec XRP. Return le plus bas du groupe
-      mais MaxDD le plus bas aussi (10.2%) — role de coussin de drawdown
+      mais MaxDD le plus bas aussi (4.8%) — role de coussin de drawdown
       dans le portefeuille. WR 13.8%, le plus faible des 6.
 
     Groupe : 6-coin-uniform
@@ -26,7 +25,7 @@ class BnbBreakoutUniform1h(TemplateStrategy):
         self.name = "bnb_breakout_uniform_1h"
         self.tp_pct = 0.04
         self.sl_pct = 0.003
-        self.equity_pct = 0.35
+        self.equity_pct = 0.16
         self.leverage = 5
         self.cooldown_sec = 10800.0  # 3h (cooldown_bars=3)
         self.max_hold_sec = 172800.0

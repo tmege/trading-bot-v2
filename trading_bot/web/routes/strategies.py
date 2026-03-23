@@ -21,10 +21,12 @@ def init(engine):
     _engine = engine
 
 
-def _get_group_for_strategy(idx: int) -> str:
-    """Get group name for strategy at config index."""
-    if _engine and _engine.config and idx < len(_engine.config.strategies.active):
-        return _engine.config.strategies.active[idx].group or ""
+def _get_group_for_strategy_by_name(name: str) -> str:
+    """Get group name for strategy by matching its name against config entries."""
+    if _engine and _engine.config:
+        for entry in _engine.config.strategies.active:
+            if entry.file.replace(".py", "") == name:
+                return entry.group or ""
     return ""
 
 
@@ -92,10 +94,14 @@ async def get_strategies():
             role = ""
             paper_mode = False
             coins_cfg = info.coins
-            if _engine.config and idx < len(_engine.config.strategies.active):
-                entry = _engine.config.strategies.active[idx]
-                role = entry.role or ""
-                paper_mode = entry.paper_mode if entry.paper_mode is not None else _engine.config.mode.paper_trading
+            if _engine.config:
+                for cfg_entry in _engine.config.strategies.active:
+                    if cfg_entry.file.replace(".py", "") == info.name:
+                        entry = cfg_entry
+                        break
+                if entry:
+                    role = entry.role or ""
+                    paper_mode = entry.paper_mode if entry.paper_mode is not None else _engine.config.mode.paper_trading
 
             total_pnl = 0.0
             if _engine.db and _engine.db.conn:
@@ -121,7 +127,7 @@ async def get_strategies():
                 "file": Path(info.file_path).name,
                 "coins": coins_cfg,
                 "role": role,
-                "group": _get_group_for_strategy(idx),
+                "group": _get_group_for_strategy_by_name(info.name),
                 "status": "DISABLED" if info.disabled else ("ERRORED" if info.errored else "OK"),
                 "paper_mode": paper_mode,
                 "trades": trades,
