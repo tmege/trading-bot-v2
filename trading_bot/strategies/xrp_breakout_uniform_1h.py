@@ -6,18 +6,18 @@ from trading_bot.strategies.template import TemplateStrategy
 class XrpBreakoutUniform1h(TemplateStrategy):
     """XRP Breakout Uniform 1H
     ========================
-    Profil : SL 0.3% / TP 4% / lookback 32 / equity 16% / lev 5x / no anti-wick
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 25% / lev 5x / no anti-wick
 
     Backtest realiste (2022-01 -> 2026-03) — compounding, frais maker/taker, funding :
-      Return   : +206%      Sharpe : 2.30   MaxDD : 5.4%    Trades : 1 163
-      PF       : 1.83       Fees   : $425
+      Return   : +461%      Sharpe : 2.30   MaxDD : 8.2%    Trades : 1 163
+      PF       : 1.83       Fees   : $895
 
     Contexte :
       Meilleur PF du groupe (1.83) — edge par trade le plus fort.
-      MaxDD contenu (5.4%) et Sharpe eleve (2.30). Historique court
+      MaxDD contenu (8.2%) et Sharpe eleve (2.30). Historique court
       (4 ans) mais comportement robuste malgre le bear 2022.
 
-    Groupe : 6-coin-uniform
+    Groupe : 4-coin-uniform
     """
 
     def __init__(self):
@@ -25,7 +25,7 @@ class XrpBreakoutUniform1h(TemplateStrategy):
         self.name = "xrp_breakout_uniform_1h"
         self.tp_pct = 0.04
         self.sl_pct = 0.003
-        self.equity_pct = 0.16
+        self.equity_pct = 0.25
         self.leverage = 5
         self.cooldown_sec = 10800.0  # 3h (cooldown_bars=3)
         self.max_hold_sec = 172800.0

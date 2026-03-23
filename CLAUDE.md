@@ -60,13 +60,11 @@ Strategy → StrategyAPI → OrderManager
 - `trading_bot/strategies/xrp_mean_reversion_bb_1h.py`: XRP mean reversion BB (RSI 20/70, TP 8%/SL 0.7%)
 - `trading_bot/strategies/bnb_breakout_relaxed_1h.py`: BNB breakout lb=32 (TP 4%/SL 0.3%)
 
-### Strategies — Group: 6-coin-uniform (identical params: SL 0.3%, TP 4%, lb 32, equity 16%, lev 5x)
-- `trading_bot/strategies/btc_breakout_uniform_1h.py`: BTC — +371%, Sharpe 2.13, 1 697 trades
-- `trading_bot/strategies/eth_breakout_uniform_1h.py`: ETH — +426%, Sharpe 2.25, 1 829 trades
-- `trading_bot/strategies/sol_breakout_uniform_1h.py`: SOL — +363%, Sharpe 2.28, 1 889 trades
-- `trading_bot/strategies/bnb_breakout_uniform_1h.py`: BNB — +163%, Sharpe 2.06, 1 178 trades
-- `trading_bot/strategies/xrp_breakout_uniform_1h.py`: XRP — +206%, Sharpe 2.30, 1 163 trades
-- `trading_bot/strategies/doge_breakout_uniform_1h.py`: DOGE — +792%, Sharpe 2.97, 1 600 trades
+### Strategies — Group: 4-coin-uniform (identical params: SL 0.3%, TP 4%, lb 32, equity 25%, lev 5x)
+- `trading_bot/strategies/sol_breakout_uniform_1h.py`: SOL — +940%, Sharpe 2.28, 1 889 trades
+- `trading_bot/strategies/bnb_breakout_uniform_1h.py`: BNB — +342%, Sharpe 2.06, 1 178 trades
+- `trading_bot/strategies/xrp_breakout_uniform_1h.py`: XRP — +461%, Sharpe 2.30, 1 163 trades
+- `trading_bot/strategies/doge_breakout_uniform_1h.py`: DOGE — +2 827%, Sharpe 2.97, 1 600 trades
 
 ### Other strategies (not in active config)
 - `trading_bot/strategies/btc_momentum_score_1h.py`: BTC momentum score composite (SMA20+RSI+MACD+vol, TP 6%/SL 2.5%)

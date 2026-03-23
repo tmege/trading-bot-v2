@@ -41,40 +41,28 @@
         "group": "4-strat-mix"
       },
       {
-        "file": "btc_breakout_uniform_1h.py",
-        "coins": ["BTC"],
-        "paper_mode": true,
-        "group": "6-coin-uniform"
-      },
-      {
-        "file": "eth_breakout_uniform_1h.py",
-        "coins": ["ETH"],
-        "paper_mode": true,
-        "group": "6-coin-uniform"
-      },
-      {
         "file": "sol_breakout_uniform_1h.py",
         "coins": ["SOL"],
         "paper_mode": true,
-        "group": "6-coin-uniform"
+        "group": "4-coin-uniform"
       },
       {
         "file": "bnb_breakout_uniform_1h.py",
         "coins": ["BNB"],
         "paper_mode": true,
-        "group": "6-coin-uniform"
+        "group": "4-coin-uniform"
       },
       {
         "file": "xrp_breakout_uniform_1h.py",
         "coins": ["XRP"],
         "paper_mode": true,
-        "group": "6-coin-uniform"
+        "group": "4-coin-uniform"
       },
       {
         "file": "doge_breakout_uniform_1h.py",
         "coins": ["DOGE"],
         "paper_mode": true,
-        "group": "6-coin-uniform"
+        "group": "4-coin-uniform"
       }
     ]
   },

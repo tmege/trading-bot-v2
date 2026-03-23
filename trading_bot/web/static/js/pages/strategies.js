@@ -17,14 +17,14 @@
         'Ratio R/DD: 15.4x |  Best: BNB +369%',
       ],
     },
-    '6-coin-uniform': {
-      label: '6-Coin Uniform',
+    '4-coin-uniform': {
+      label: '4-Coin Uniform',
       stats: [
-        'Avg Return: +387% |  MaxDD: 6.2%',
-        'Avg/month: +5.0%  |  Sharpe: ~2.33',
-        'Semestres +: 6/6  |  Trades: ~9 356',
-        'Ratio R/DD: 62.1x |  Best: DOGE +792%',
-        'Profil: SL 0.3% / TP 4% / lb 32 / eq 16%',
+        '3Y Return: +291%  |  MaxDD: 8.4%',
+        'Avg/month: +8.1%  |  Sharpe: ~2.36',
+        'Trades: ~3 538    |  Best: DOGE +509%',
+        'Coins: SOL+BNB+XRP+DOGE',
+        'Profil: SL 0.3% / TP 4% / lb 32 / eq 25%',
       ],
     },
   };
