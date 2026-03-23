@@ -55,11 +55,23 @@ def get_forex() -> dict:
         return cached
 
     try:
-        resp = _get_client().get(
-            "https://api.frankfurter.app/latest",
-            params={"from": "USD", "to": "EUR,GBP,JPY,CHF"},
-        )
-        resp.raise_for_status()
+        last_err = None
+        resp = None
+        for _attempt in range(2):
+            try:
+                resp = _get_client().get(
+                    "https://api.frankfurter.app/latest",
+                    params={"from": "USD", "to": "EUR,GBP,JPY,CHF"},
+                    timeout=8.0,
+                )
+                resp.raise_for_status()
+                last_err = None
+                break
+            except Exception as e:
+                last_err = e
+                time.sleep(1)
+        if last_err or resp is None:
+            raise last_err or RuntimeError("forex fetch failed")
         rates_raw = resp.json().get("rates", {})
 
         rates = {}
@@ -82,7 +94,7 @@ def get_forex() -> dict:
 
 def get_market_phase(db) -> dict:
     if not db:
-        return {"phase": "unknown", "confidence": 0, "recommended_strategies": [], "indicators": {}}
+        return {"phase": "unknown", "recommended_strategies": [], "indicators": {}}
 
     try:
         # Try 1h candles first
@@ -102,7 +114,7 @@ def get_market_phase(db) -> dict:
                 rows = [{"close": reversed_5m[i]["close"]} for i in range(11, len(reversed_5m), 12)]
                 rows = list(reversed(rows))  # back to DESC order
         if len(rows) < 50:
-            return {"phase": "unknown", "confidence": 0, "recommended_strategies": [], "indicators": {}}
+            return {"phase": "unknown", "recommended_strategies": [], "indicators": {}}
 
         closes = [float(r["close"]) for r in reversed(rows)]
 
@@ -119,24 +131,19 @@ def get_market_phase(db) -> dict:
 
         if current > sma20 > sma50 and atr_pct < 3:
             phase = "bull"
-            confidence = 0.8
             strategies = ["trend_following", "breakout"]
         elif current < sma20 < sma50 and atr_pct < 3:
             phase = "bear"
-            confidence = 0.8
             strategies = ["mean_reversion", "short_bias"]
         elif atr_pct > 4:
             phase = "high_vol"
-            confidence = 0.7
             strategies = ["scalping", "grid"]
         else:
             phase = "range"
-            confidence = 0.6
             strategies = ["mean_reversion", "grid"]
 
         return {
             "phase": phase,
-            "confidence": confidence,
             "recommended_strategies": strategies,
             "indicators": {
                 "sma20": round(sma20, 2),

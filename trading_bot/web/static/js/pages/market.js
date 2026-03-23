@@ -149,13 +149,10 @@
     const fg = data.fear_greed || 50;
     const fgLabel = data.fear_greed_label || 'N/A';
     const phase = data.phase || 'unknown';
-    const confidence = data.phase_confidence || 0;
     const strategies = data.recommended_strategies || [];
     const ind = data.indicators || {};
 
     const fgColor = getFGColor(fg);
-    const confColor = getConfidenceColor(confidence);
-    const confPct = Math.round(confidence * 100);
 
     const phaseLabels = { bull: 'Bullish', bear: 'Bearish', range: 'Ranging', high_vol: 'High Volatility', unknown: 'Unknown' };
 
@@ -172,14 +169,9 @@
           <div style="margin-bottom:10px;">
             <span class="phase-badge ${TB.utils.esc(phase)}">${TB.utils.esc(phaseLabels[phase] || phase.toUpperCase())}</span>
           </div>
-          ${hasData ? `
-            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Confidence ${confPct}%</div>
-            <div class="confidence-bar">
-              <div class="confidence-fill" style="width:${confPct}%;background:${confColor};"></div>
-            </div>
-          ` : `
+          ${!hasData ? `
             <div style="font-size:11px;color:var(--text3);margin-top:4px;">Waiting for BTC candle data...</div>
-          `}
+          ` : ''}
           ${ind.sma20 ? `
           <div class="phase-indicators">
             <div class="phase-indicator">
@@ -268,12 +260,6 @@
     if (v < 55) return '#d29922';
     if (v < 75) return '#3fb950';
     return '#3fb950';
-  }
-
-  function getConfidenceColor(c) {
-    if (c >= 0.7) return 'var(--green)';
-    if (c >= 0.5) return 'var(--yellow)';
-    return 'var(--text3)';
   }
 
   // --- Global Market + Forex combined ---

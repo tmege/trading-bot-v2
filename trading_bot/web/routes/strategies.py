@@ -1,5 +1,7 @@
+import json
 import logging
 import os
+import re
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -10,10 +12,60 @@ router = APIRouter(prefix="/api/strategies", tags=["strategies"])
 
 _engine = None
 
+# Allowed group names (alphanumeric, hyphens, underscores)
+_GROUP_RE = re.compile(r"^[a-zA-Z0-9_-]{1,50}$")
+
 
 def init(engine):
     global _engine
     _engine = engine
+
+
+def _get_group_for_strategy(idx: int) -> str:
+    """Get group name for strategy at config index."""
+    if _engine and _engine.config and idx < len(_engine.config.strategies.active):
+        return _engine.config.strategies.active[idx].group or ""
+    return ""
+
+
+def _build_coin_group_map() -> tuple[dict[str, list[str]], dict[str, set[str]]]:
+    """Return (groups: {group_name: [strat_names]}, strat_coins: {strat_name: {coins}})."""
+    groups: dict[str, list[str]] = {}
+    strat_coins: dict[str, set[str]] = {}
+    if not _engine or not _engine.config:
+        return groups, strat_coins
+    for entry in _engine.config.strategies.active:
+        name = entry.file.replace(".py", "")
+        strat_coins[name] = set(entry.coins)
+        if entry.group:
+            groups.setdefault(entry.group, []).append(name)
+    return groups, strat_coins
+
+
+def _find_coin_conflicts(strat_name: str, groups: dict[str, list[str]],
+                         strat_coins: dict[str, set[str]]) -> set[str]:
+    """Find strategies from OTHER groups that share coins with strat_name."""
+    # Find this strategy's group
+    my_group = ""
+    for g, members in groups.items():
+        if strat_name in members:
+            my_group = g
+            break
+    if not my_group:
+        return set()
+
+    my_coins = strat_coins.get(strat_name, set())
+    if not my_coins:
+        return set()
+
+    conflicts = set()
+    for g, members in groups.items():
+        if g == my_group:
+            continue
+        for member in members:
+            if strat_coins.get(member, set()) & my_coins:
+                conflicts.add(member)
+    return conflicts
 
 
 @router.get("")
@@ -69,6 +121,7 @@ async def get_strategies():
                 "file": Path(info.file_path).name,
                 "coins": coins_cfg,
                 "role": role,
+                "group": _get_group_for_strategy(idx),
                 "status": "DISABLED" if info.disabled else ("ERRORED" if info.errored else "OK"),
                 "paper_mode": paper_mode,
                 "trades": trades,
@@ -84,8 +137,6 @@ async def get_strategies():
 
     # Engine stopped — show strategies from config
     if _engine.config:
-        import json
-
         # Load disabled list from DB
         disabled_names = set()
         if _engine.db and _engine.db.conn:
@@ -110,6 +161,7 @@ async def get_strategies():
                 "file": entry.file,
                 "coins": entry.coins,
                 "role": entry.role or "",
+                "group": entry.group or "",
                 "status": "DISABLED" if is_disabled else "STOPPED",
                 "paper_mode": paper_mode,
                 "trades": 0,
@@ -154,10 +206,93 @@ async def get_strategy_code(name: str):
         return {"error": "failed to read file"}
 
 
+@router.post("/group/{group_name}/toggle")
+async def toggle_group(group_name: str):
+    if not _engine:
+        return {"error": "not initialized"}
+
+    if not _GROUP_RE.match(group_name):
+        return {"error": "invalid group name"}
+
+    if not _engine.config:
+        return {"error": "no config loaded"}
+
+    groups, _ = _build_coin_group_map()
+
+    if group_name not in groups:
+        return {"error": "group not found"}
+
+    target_names = set(groups[group_name])
+    other_groups = {g for g in groups if g != group_name}
+
+    # Engine running: toggle in-memory
+    if _engine._strategies:
+        # Check if the target group is currently active (at least one strategy enabled)
+        target_active = any(
+            not info.disabled
+            for info in _engine._strategies
+            if info.name in target_names
+        )
+
+        if target_active:
+            # Disable the target group
+            for info in _engine._strategies:
+                if info.name in target_names:
+                    info.disabled = True
+            action = "disabled"
+        else:
+            # Enable target group, disable other groups
+            other_names = set()
+            for g in other_groups:
+                other_names.update(groups[g])
+
+            for info in _engine._strategies:
+                if info.name in target_names:
+                    info.disabled = False
+                    info.errored = False
+                elif info.name in other_names:
+                    info.disabled = True
+
+            action = "enabled"
+
+        _engine.update_traded_coins()
+        _engine._save_engine_state()
+
+        return {"group": group_name, "status": action}
+
+    # Engine stopped: toggle in DB
+    if _engine.db:
+        raw = _engine.db.load_state("__engine__", "state")
+        state = json.loads(raw) if raw else {}
+        disabled_list = set(state.get("disabled_strategies", []))
+
+        target_active = not target_names.issubset(disabled_list)
+
+        if target_active:
+            # Disable all strategies in target group
+            disabled_list.update(target_names)
+            action = "disabled"
+        else:
+            # Enable target group, disable other groups
+            disabled_list -= target_names
+            for g in other_groups:
+                disabled_list.update(groups[g])
+            action = "enabled"
+
+        state["disabled_strategies"] = sorted(disabled_list)
+        _engine.db.save_state("__engine__", "state", json.dumps(state))
+
+        return {"group": group_name, "status": action}
+
+    return {"error": "no strategies loaded"}
+
+
 @router.post("/{name}/toggle")
 async def toggle_strategy(name: str):
     if not _engine:
         return {"error": "not initialized"}
+
+    groups, strat_coins = _build_coin_group_map()
 
     # Engine running: toggle in-memory + persist
     for info in _engine._strategies:
@@ -165,6 +300,14 @@ async def toggle_strategy(name: str):
             info.disabled = not info.disabled
             if not info.disabled:
                 info.errored = False
+                # Disable strategies from other groups that share the same coin(s)
+                conflicts = _find_coin_conflicts(name, groups, strat_coins)
+                for other in _engine._strategies:
+                    if other.name in conflicts and not other.disabled:
+                        other.disabled = True
+                        log.info("Auto-disabled %s (coin conflict with %s)", other.name, name)
+
+            _engine.update_traded_coins()
             _engine._save_engine_state()
             return {
                 "status": "disabled" if info.disabled else "enabled",
@@ -173,7 +316,6 @@ async def toggle_strategy(name: str):
 
     # Engine stopped: toggle in DB directly so it takes effect on next start
     if _engine.db and _engine.config:
-        import json
         strat_name = name.replace(".py", "")
         known = [e.file.replace(".py", "") for e in _engine.config.strategies.active]
         if strat_name not in known:
@@ -181,16 +323,19 @@ async def toggle_strategy(name: str):
 
         raw = _engine.db.load_state("__engine__", "state")
         state = json.loads(raw) if raw else {}
-        disabled_list = state.get("disabled_strategies", [])
+        disabled_list = set(state.get("disabled_strategies", []))
 
         if strat_name in disabled_list:
-            disabled_list.remove(strat_name)
+            disabled_list.discard(strat_name)
             new_status = "enabled"
+            # Disable strategies from other groups that share the same coin(s)
+            conflicts = _find_coin_conflicts(strat_name, groups, strat_coins)
+            disabled_list.update(conflicts)
         else:
-            disabled_list.append(strat_name)
+            disabled_list.add(strat_name)
             new_status = "disabled"
 
-        state["disabled_strategies"] = disabled_list
+        state["disabled_strategies"] = sorted(disabled_list)
         _engine.db.save_state("__engine__", "state", json.dumps(state))
 
         return {

@@ -196,7 +196,7 @@ def _fetch_all_feeds() -> list[dict]:
 
 def _fetch_rss(client: httpx.Client, url: str) -> list[dict]:
     try:
-        resp = client.get(url)
+        resp = client.get(url, follow_redirects=True)
         resp.raise_for_status()
         xml = resp.text
         return _parse_rss(xml)

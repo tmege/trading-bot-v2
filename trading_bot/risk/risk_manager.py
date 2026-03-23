@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 
 CIRCUIT_BREAKER_WINDOW = 900
 CIRCUIT_BREAKER_MOVE = 0.07
+CIRCUIT_BREAKER_MAX_MOVE = 5.0  # >500% = data anomaly, ignore
 
 
 class RiskManager:
@@ -22,6 +23,7 @@ class RiskManager:
         self._last_reset_day = -1
         self._price_history: dict[str, deque] = {}
         self._circuit_breaker_coins: set[str] = set()
+        self._cb_last_log: dict[str, float] = {}
 
         self._positions_notional: dict[str, float] = {}
 
@@ -96,12 +98,16 @@ class RiskManager:
             oldest_price = history[0][1]
             if oldest_price > 0:
                 move = abs(price - oldest_price) / oldest_price
+                if move > CIRCUIT_BREAKER_MAX_MOVE:
+                    # >500% in 15min = data anomaly, ignore silently
+                    return
                 if move > CIRCUIT_BREAKER_MOVE:
-                    if coin not in self._circuit_breaker_coins:
+                    if coin not in self._circuit_breaker_coins or now - self._cb_last_log.get(coin, 0) > 300:
                         log.warning(
                             f"Circuit breaker triggered: {coin} moved {move*100:.1f}% in 15min"
                         )
-                        self._circuit_breaker_coins.add(coin)
+                        self._cb_last_log[coin] = now
+                    self._circuit_breaker_coins.add(coin)
                 else:
                     self._circuit_breaker_coins.discard(coin)
 
@@ -135,6 +141,9 @@ class RiskManager:
             self._daily_pnl.clear()
             self._daily_fees.clear()
             self._daily_trades.clear()
+            if self._paused:
+                self._paused = False
+                log.warning("Risk manager: auto-UNPAUSED on daily reset")
             self._last_reset_day = day
             log.info("Daily risk counters reset")
 

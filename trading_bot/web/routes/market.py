@@ -99,7 +99,6 @@ async def get_overview():
 
     return {
         "phase": phase_data.get("phase", "unknown"),
-        "phase_confidence": phase_data.get("confidence", 0),
         "fear_greed": fg_value,
         "fear_greed_label": fg_label,
         "recommended_strategies": phase_data.get("recommended_strategies", []),

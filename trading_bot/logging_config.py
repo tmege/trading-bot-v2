@@ -10,6 +10,9 @@ def setup_logging(log_dir: str = "./logs", level: int = logging.DEBUG) -> None:
     root = logging.getLogger()
     root.setLevel(level)
 
+    for noisy in ("httpcore", "httpx", "websockets", "hpack"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
     if root.handlers:
         return
 

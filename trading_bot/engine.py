@@ -43,6 +43,7 @@ class Engine:
         self._last_emergency_check: float = 0.0
         self._dashboard: Dashboard | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._traded_coins: set[str] = set()
 
     def create(self, config_path: str = "config/bot_config.json") -> None:
         self.config = load_config(config_path)
@@ -267,6 +268,41 @@ class Engine:
             except Exception:
                 log.exception(f"Failed to load strategy {entry.file}")
 
+        self.update_traded_coins()
+
+    def update_traded_coins(self) -> None:
+        """Recalculate traded coins based on non-disabled strategies."""
+        self._traded_coins = {
+            coin for info in self._strategies
+            if not info.disabled and not info.errored
+            for coin in info.coins
+        }
+
+    def _apply_default_group_state(self) -> None:
+        """First boot: only the first group is active, others start disabled."""
+        if not self.config:
+            return
+        groups_seen: list[str] = []
+        for entry in self.config.strategies.active:
+            if entry.group and entry.group not in groups_seen:
+                groups_seen.append(entry.group)
+
+        if len(groups_seen) <= 1:
+            return
+
+        default_group = groups_seen[0]
+        non_default = set(groups_seen[1:])
+
+        for info in self._strategies:
+            # Find this strategy's group from config
+            for entry in self.config.strategies.active:
+                if entry.file.replace(".py", "") == info.name and entry.group in non_default:
+                    info.disabled = True
+                    log.info(f"First boot: disabled '{info.name}' (group '{entry.group}' is not default)")
+                    break
+
+        self.update_traded_coins()
+
     # --- State persistence ---
 
     def _save_engine_state(self) -> None:
@@ -305,6 +341,8 @@ class Engine:
         try:
             raw = self.db.load_state("__engine__", "state")
             if not raw:
+                # First boot: disable non-default groups
+                self._apply_default_group_state()
                 return
 
             state = json.loads(raw)
@@ -312,6 +350,15 @@ class Engine:
             # Risk manager
             if self.risk_manager and "risk_manager" in state:
                 self.risk_manager.from_dict(state["risk_manager"])
+                # Clear emergency pause on restart — daily reset will handle it properly
+                if self.risk_manager.paused:
+                    self.risk_manager.unpause()
+                    log.warning("Risk manager was paused from previous session — auto-unpaused on restart")
+                # Remove circuit breaker entries for coins we don't trade
+                stale = self.risk_manager._circuit_breaker_coins - self._traded_coins
+                if stale:
+                    self.risk_manager._circuit_breaker_coins -= stale
+                    log.info(f"Cleared {len(stale)} non-traded coins from circuit breaker: {sorted(stale)}")
 
             # Paper exchanges
             paper_states = state.get("paper_exchanges", {})
@@ -323,12 +370,18 @@ class Engine:
                         paper.from_dict(paper_states[name])
 
             # Disabled strategies
-            for name in state.get("disabled_strategies", []):
-                for info in self._strategies:
-                    if info.name == name:
-                        info.disabled = True
-                        log.info(f"Strategy '{name}' restored as disabled")
+            disabled_names = state.get("disabled_strategies", [])
+            if disabled_names:
+                for name in disabled_names:
+                    for info in self._strategies:
+                        if info.name == name:
+                            info.disabled = True
+                            log.info(f"Strategy '{name}' restored as disabled")
+            else:
+                # Existing DB but no disabled info (upgrade path) — apply defaults
+                self._apply_default_group_state()
 
+            self.update_traded_coins()
             log.info("Engine state restored")
         except Exception:
             log.exception("Failed to restore engine state")
@@ -374,7 +427,7 @@ class Engine:
             if self.order_manager:
                 self.order_manager.feed_mid(mid.coin, price)
 
-            if self.risk_manager:
+            if self.risk_manager and mid.coin in self._traded_coins:
                 self.risk_manager.update_price(mid.coin, price)
 
         # Throttled emergency close check (every 5s instead of every 60s)
@@ -458,8 +511,21 @@ class Engine:
             if self._global_paper:
                 account_value = self._global_paper.equity
             elif self.rest and self.config.wallet_address:
-                acc = self.rest.get_account(self.config.wallet_address)
-                account_value = acc.account_value.to_float()
+                last_err = None
+                for attempt in range(2):
+                    try:
+                        acc = self.rest.get_account(self.config.wallet_address, timeout=10.0)
+                        account_value = acc.account_value.to_float()
+                        last_err = None
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt == 0:
+                            log.warning("Emergency close check: get_account timeout, retrying...")
+                            await asyncio.sleep(1)
+                if last_err:
+                    log.error("Emergency close check: get_account failed after 2 attempts: %s", last_err)
+                    return
 
             if account_value <= 0:
                 return

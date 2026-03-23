@@ -60,9 +60,11 @@ class RestClient:
 
     # --- /info endpoints (no auth) ---
 
-    def _info_post(self, payload: dict) -> dict | list:
+    def _info_post(self, payload: dict, timeout: float | None = None) -> dict | list:
         self._limiter.acquire()
-        resp = self._client.post(f"{self.base_url}/info", json=payload)
+        resp = self._client.post(
+            f"{self.base_url}/info", json=payload, timeout=timeout,
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -146,8 +148,8 @@ class RestClient:
             for c in data
         ]
 
-    def get_account(self, address: str) -> Account:
-        data = self._info_post({"type": "clearinghouseState", "user": address})
+    def get_account(self, address: str, timeout: float | None = None) -> Account:
+        data = self._info_post({"type": "clearinghouseState", "user": address}, timeout=timeout)
         margin = data.get("marginSummary", {})
         positions_raw = data.get("assetPositions", [])
         positions = []

@@ -40,6 +40,8 @@ class TemplateStrategy:
         self.leverage = 7
         self.entry_offset_pct = 0.0002
         self.entry_timeout_sec = 90.0
+        self.max_atr_pct_rank = 0.90
+        self._last_atr_log = 0.0
 
     def on_init(self, api):
         self.api = api
@@ -66,6 +68,12 @@ class TemplateStrategy:
 
         ind = self.api.get_indicators(self.coin, "1h", 200, mid_price)
         if not ind or not ind.valid:
+            return
+
+        if ind.atr_pct_rank >= self.max_atr_pct_rank:
+            if now - self._last_atr_log > 300:
+                self.api.log(logging.DEBUG, f"ATR filter: atr_pct_rank={ind.atr_pct_rank:.2f} >= {self.max_atr_pct_rank}")
+                self._last_atr_log = now
             return
 
         signal = self._scan_signals(ind, mid_price)
@@ -166,6 +174,13 @@ class TemplateStrategy:
                 self.coin, "buy", sl_px, size, sl_px, tpsl="sl"
             )
 
+        if not self.sl_oid:
+            self.api.log(logging.ERROR, "SL trigger order REJECTED — closing position immediately")
+            close_side = "sell" if self.position_side == "buy" else "buy"
+            self.api.cancel_all(self.coin)
+            self.api.place_limit(self.coin, close_side, fill.px.to_float(), size, tif="ioc")
+            return
+
         self.api.log(logging.INFO, f"Position opened: {self.position_side} @ {self.entry_price:.2f}")
 
     def _handle_exit_fill(self, fill):
@@ -198,6 +213,30 @@ class TemplateStrategy:
             self.in_position = False
             return
 
+        # Bot-side SL check (belt-and-suspenders with exchange trigger)
+        if self.entry_price > 0 and mid_price > 0:
+            if self.position_side == "buy":
+                sl_hit = mid_price <= self.entry_price * (1 - self.sl_pct)
+            else:
+                sl_hit = mid_price >= self.entry_price * (1 + self.sl_pct)
+
+            if sl_hit:
+                self.api.log(logging.WARNING,
+                             "BOT-SIDE SL HIT: mid=%.4f entry=%.4f sl_pct=%.3f%%" %
+                             (mid_price, self.entry_price, self.sl_pct * 100))
+                self.api.cancel_all(self.coin)
+                pos = self.api.get_position(self.coin)
+                if pos and abs(pos.size.to_float()) > 0:
+                    size = abs(pos.size.to_float())
+                    close_side = "sell" if self.position_side == "buy" else "buy"
+                    slippage = 0.005
+                    if close_side == "buy":
+                        close_px = mid_price * (1 + slippage)
+                    else:
+                        close_px = mid_price * (1 - slippage)
+                    self.api.place_limit(self.coin, close_side, close_px, size, tif="ioc")
+                return
+
         if now - self.entry_time > self.max_hold_sec and self.entry_time > 0:
             self.api.cancel_all(self.coin)
             pos = self.api.get_position(self.coin)
@@ -220,6 +259,45 @@ class TemplateStrategy:
             self.entry_price = pos.entry_px.to_float()
             self.position_side = "buy" if pos.size.to_float() > 0 else "sell"
             self.api.log(logging.INFO, f"Existing position found: {self.position_side} @ {self.entry_price}")
+            self._reconcile_tpsl(pos)
+        else:
+            self.in_position = False
+            self.sl_oid = 0
+            self.tp_oid = 0
+
+    def _reconcile_tpsl(self, pos):
+        """Verify TP/SL orders still exist on exchange. Re-place if missing."""
+        open_orders = self.api.get_open_orders(self.coin)
+        open_oids = {o.oid for o in open_orders}
+        size = abs(pos.size.to_float())
+
+        sl_exists = self.sl_oid in open_oids if self.sl_oid else False
+        tp_exists = self.tp_oid in open_oids if self.tp_oid else False
+
+        if sl_exists and tp_exists:
+            return
+
+        close_side = "sell" if self.position_side == "buy" else "buy"
+
+        if not sl_exists:
+            if self.position_side == "buy":
+                sl_px = self.entry_price * (1 - self.sl_pct)
+            else:
+                sl_px = self.entry_price * (1 + self.sl_pct)
+            self.sl_oid = self.api.place_trigger(
+                self.coin, close_side, sl_px, size, sl_px, tpsl="sl"
+            )
+            self.api.log(logging.WARNING, f"SL trigger re-placed (oid={self.sl_oid}) @ {sl_px:.2f}")
+
+        if not tp_exists:
+            if self.position_side == "buy":
+                tp_px = self.entry_price * (1 + self.tp_pct)
+            else:
+                tp_px = self.entry_price * (1 - self.tp_pct)
+            self.tp_oid = self.api.place_trigger(
+                self.coin, close_side, tp_px, size, tp_px, tpsl="tp"
+            )
+            self.api.log(logging.WARNING, f"TP trigger re-placed (oid={self.tp_oid}) @ {tp_px:.2f}")
 
     def _save_state(self):
         import json

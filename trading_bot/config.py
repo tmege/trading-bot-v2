@@ -30,6 +30,7 @@ class StrategyEntry:
     coins: list[str] = field(default_factory=list)
     paper_mode: bool | None = None
     vault_address: str | None = None
+    group: str = ""
 
 
 @dataclass
@@ -91,6 +92,7 @@ def _parse_strategy_entry(data: dict) -> StrategyEntry:
         coins=data.get("coins", []),
         paper_mode=data.get("paper_mode"),
         vault_address=data.get("vault_address"),
+        group=data.get("group", ""),
     )
 
 
