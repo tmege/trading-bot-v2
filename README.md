@@ -70,24 +70,18 @@ cp .env.example .env
     "dir": "./trading_bot/strategies",
     "reload_interval_sec": 5,
     "active": [
-      {
-        "file": "btc_inside_bar_breakout_1h.py",
-        "role": "primary",
-        "coins": ["BTC"],
-        "paper_mode": true
-      },
-      {
-        "file": "eth_breakout_relaxed_1h.py",
-        "role": "primary",
-        "coins": ["ETH"],
-        "paper_mode": true
-      },
-      {
-        "file": "sol_breakout_normal_1h.py",
-        "role": "primary",
-        "coins": ["SOL"],
-        "paper_mode": true
-      }
+      // Group: 4-strat-mix (coin-specific parameters)
+      { "file": "btc_inside_bar_breakout_1h.py", "coins": ["BTC"], "paper_mode": true, "group": "4-strat-mix" },
+      { "file": "sol_breakout_normal_1h.py",     "coins": ["SOL"], "paper_mode": true, "group": "4-strat-mix" },
+      { "file": "xrp_mean_reversion_bb_1h.py",   "coins": ["XRP"], "paper_mode": true, "group": "4-strat-mix" },
+      { "file": "bnb_breakout_relaxed_1h.py",     "coins": ["BNB"], "paper_mode": true, "group": "4-strat-mix" },
+      // Group: 6-coin-uniform (identical params: SL 0.3%, TP 4%, lb 32)
+      { "file": "btc_breakout_uniform_1h.py",  "coins": ["BTC"],  "paper_mode": true, "group": "6-coin-uniform" },
+      { "file": "eth_breakout_uniform_1h.py",  "coins": ["ETH"],  "paper_mode": true, "group": "6-coin-uniform" },
+      { "file": "sol_breakout_uniform_1h.py",  "coins": ["SOL"],  "paper_mode": true, "group": "6-coin-uniform" },
+      { "file": "bnb_breakout_uniform_1h.py",  "coins": ["BNB"],  "paper_mode": true, "group": "6-coin-uniform" },
+      { "file": "xrp_breakout_uniform_1h.py",  "coins": ["XRP"],  "paper_mode": true, "group": "6-coin-uniform" },
+      { "file": "doge_breakout_uniform_1h.py", "coins": ["DOGE"], "paper_mode": true, "group": "6-coin-uniform" }
     ]
   },
   "mode": {
@@ -182,12 +176,20 @@ trading-bot-v2/
 │   │
 │   ├── strategies/                     # Strategy implementations
 │   │   ├── template.py                 # TemplateStrategy base class
-│   │   ├── btc_inside_bar_breakout_1h.py  # BTC inside bar breakout (1h)
-│   │   ├── btc_momentum_score_1h.py       # BTC momentum score composite (1h)
-│   │   ├── eth_breakout_relaxed_1h.py     # ETH breakout relaxed (1h)
-│   │   ├── sol_breakout_normal_1h.py      # SOL breakout normal (1h)
-│   │   ├── sol_breakout_safe_1h.py        # SOL breakout safe (1h)
-│   │   └── sol_breakout_aggressive_1h.py  # SOL breakout aggressive (1h)
+│   │   ├── btc_inside_bar_breakout_1h.py  # [4-strat-mix] BTC inside bar breakout
+│   │   ├── btc_momentum_score_1h.py       # BTC momentum score composite
+│   │   ├── eth_breakout_relaxed_1h.py     # ETH breakout relaxed
+│   │   ├── sol_breakout_normal_1h.py      # [4-strat-mix] SOL breakout normal
+│   │   ├── sol_breakout_safe_1h.py        # SOL breakout safe
+│   │   ├── sol_breakout_aggressive_1h.py  # SOL breakout aggressive
+│   │   ├── xrp_mean_reversion_bb_1h.py   # [4-strat-mix] XRP mean reversion BB
+│   │   ├── bnb_breakout_relaxed_1h.py     # [4-strat-mix] BNB breakout relaxed
+│   │   ├── btc_breakout_uniform_1h.py     # [6-coin-uniform] BTC breakout
+│   │   ├── eth_breakout_uniform_1h.py     # [6-coin-uniform] ETH breakout
+│   │   ├── sol_breakout_uniform_1h.py     # [6-coin-uniform] SOL breakout
+│   │   ├── bnb_breakout_uniform_1h.py     # [6-coin-uniform] BNB breakout
+│   │   ├── xrp_breakout_uniform_1h.py     # [6-coin-uniform] XRP breakout
+│   │   └── doge_breakout_uniform_1h.py    # [6-coin-uniform] DOGE breakout
 │   │
 │   ├── risk/
 │   │   └── risk_manager.py             # Daily limits, circuit breaker
@@ -301,26 +303,35 @@ trading-bot-v2/
 
 ## Included Strategies
 
-### BTC
+Two strategy groups are configured:
 
-| Strategy | Logic | TP/SL | Sizing | Backtest |
-|----------|-------|-------|--------|----------|
-| `btc_inside_bar_breakout_1h` | Inside bar + breakout direction (EMA21 trend, ATR compression < 20%, vol >= 0.8, heures 8-20 UTC) | 4.5% / 2.5% | 20%, lev 5x | Sharpe +1.90 (3Y), WR 56%, 114 trades, DD 11.1% |
-| `btc_momentum_score_1h` | Score composite (close > SMA20, RSI > 50, MACD histo > 0, vol > 1.2). Long si score < 1 → >= 3, short si > 3 → <= 1 | 6% / 2.5% | 35%, lev 5x | Sharpe +0.65, positif 10/10 fenêtres |
+### Group: 4-strat-mix (coin-specific parameters)
 
-### ETH
+| Strategy | Coin | Logic | TP/SL | Sizing |
+|----------|------|-------|-------|--------|
+| `btc_inside_bar_breakout_1h` | BTC | Inside bar + breakout (EMA21, ATR compression, vol >= 0.8, hours 8-20 UTC) | 4.5% / 2.5% | 15%, lev 5x |
+| `sol_breakout_normal_1h` | SOL | Breakout lb=14 (SMA50 trend, vol >= 2.5, anti-wick 40%) | 4% / 0.9% | 15%, lev 5x |
+| `xrp_mean_reversion_bb_1h` | XRP | Mean reversion Bollinger Bands (RSI 20/70, BB 0.08/0.95) | 8% / 0.7% | 35%, lev 5x |
+| `bnb_breakout_relaxed_1h` | BNB | Breakout lb=32 (SMA50, vol >= 0.8) | 4% / 0.3% | 35%, lev 5x |
 
-| Strategy | Logic | TP/SL | Sizing | Backtest |
-|----------|-------|-------|--------|----------|
-| `eth_breakout_relaxed_1h` | Breakout haut/bas sur 35 bougies (SMA50 trend, vol >= 4.5, anti-wick 60%, max hold 36h) | 3.5% / 1.8% | 20%, lev 5x | Sharpe +2.45 (3Y), WR 58%, 113 trades, DD 8.1% |
+### Group: 6-coin-uniform (identical parameters across all coins)
 
-### SOL
+All 6 strategies use the same logic: breakout above/below the 32-bar high/low on 1h candles, filtered by SMA50 trend and volume ratio >= 0.8. No anti-wick filter.
 
-| Strategy | Logic | TP/SL | Sizing | Backtest |
-|----------|-------|-------|--------|----------|
-| `sol_breakout_normal_1h` | Breakout haut/bas sur 14 bougies (SMA50 trend, vol >= 2.5, anti-wick 40%) | 4% / 0.9% | 30%, lev 5x | Sharpe +2.60 (3Y), WR 32%, 320 trades, DD 14.9% |
-| `sol_breakout_safe_1h` | Breakout haut/bas sur 15 bougies (SMA50 trend, vol >= 2.5, cooldown 6h) | 6% / 1% | 30%, lev 5x | Sharpe +1.65, positif 10/10 fenêtres |
-| `sol_breakout_aggressive_1h` | Breakout haut/bas sur 10 bougies (SMA50 trend, vol >= 2.5, cooldown 2h) | 8% / 1% | 50%, lev 7x | Sharpe +1.54, positif 10/10 fenêtres |
+**Parameters**: SL 0.3% / TP 4% / lookback 32 / equity 35% / leverage 5x / cooldown 3h / max hold 48h
+
+| Strategy | Coin | Backtest period | Return | Sharpe | MaxDD | Trades | PF | Fees |
+|----------|------|----------------|--------|--------|-------|--------|----|------|
+| `btc_breakout_uniform_1h` | BTC | 2019-09 to 2026-03 | +2 324% | 2.10 | 13.9% | 1 697 | 1.75 | $7 393 |
+| `eth_breakout_uniform_1h` | ETH | 2019-11 to 2026-03 | +3 255% | 2.26 | 12.8% | 1 829 | 1.76 | $9 541 |
+| `sol_breakout_uniform_1h` | SOL | 2020-09 to 2026-03 | +2 503% | 2.30 | 13.0% | 1 889 | 1.69 | $7 194 |
+| `bnb_breakout_uniform_1h` | BNB | 2022-01 to 2026-03 | +673% | 2.06 | 10.2% | 1 178 | 1.71 | $1 933 |
+| `xrp_breakout_uniform_1h` | XRP | 2022-01 to 2026-03 | +940% | 2.28 | 11.4% | 1 163 | 1.82 | $1 739 |
+| `doge_breakout_uniform_1h` | DOGE | 2020-07 to 2026-03 | +10 142% | 2.96 | 11.3% | 1 600 | 2.16 | $19 768 |
+
+Backtest methodology: realistic mode with compounding, maker/taker fees, funding rates, drawdown multiplier, cooldown, and max hold timeout. Initial equity $1 000.
+
+> **Note**: DOGE's outsized return (+10 142%) is not a bug. It is driven by compounding over 5.7 years combined with DOGE's higher volatility (more frequent +4% breakouts). 92% of DOGE PnL was generated in 2024-2026.
 
 ### Creating a Strategy
 

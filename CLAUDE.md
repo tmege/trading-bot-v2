@@ -47,16 +47,30 @@ Strategy → StrategyAPI → OrderManager
 - `trading_bot/exchange/order_manager.py`: paper/live routing + OID-to-strategy mapping
 - `trading_bot/exchange/paper_exchange.py`: full simulator with fees
 
-### Strategies
+### Strategy Framework
 - `trading_bot/strategy/api.py`: **StrategyAPI** — primary interface used by strategies
 - `trading_bot/strategy/loader.py`: dynamic loading + hot-reload (5s)
 - `trading_bot/strategy/base.py`: strategy protocol (interface)
 - `trading_bot/strategy/indicators.py`: 50+ technical indicators
 - `trading_bot/strategies/template.py`: `TemplateStrategy` base class
+
+### Strategies — Group: 4-strat-mix (coin-specific params)
 - `trading_bot/strategies/btc_inside_bar_breakout_1h.py`: BTC inside bar breakout (EMA21+ATR, TP 4.5%/SL 2.5%)
+- `trading_bot/strategies/sol_breakout_normal_1h.py`: SOL breakout lb=14 (anti-wick 40%, TP 4%/SL 0.9%)
+- `trading_bot/strategies/xrp_mean_reversion_bb_1h.py`: XRP mean reversion BB (RSI 20/70, TP 8%/SL 0.7%)
+- `trading_bot/strategies/bnb_breakout_relaxed_1h.py`: BNB breakout lb=32 (TP 4%/SL 0.3%)
+
+### Strategies — Group: 6-coin-uniform (identical params: SL 0.3%, TP 4%, lb 32, equity 35%, lev 5x)
+- `trading_bot/strategies/btc_breakout_uniform_1h.py`: BTC — +2 324%, Sharpe 2.10, 1 697 trades
+- `trading_bot/strategies/eth_breakout_uniform_1h.py`: ETH — +3 255%, Sharpe 2.26, 1 829 trades
+- `trading_bot/strategies/sol_breakout_uniform_1h.py`: SOL — +2 503%, Sharpe 2.30, 1 889 trades
+- `trading_bot/strategies/bnb_breakout_uniform_1h.py`: BNB — +673%, Sharpe 2.06, 1 178 trades
+- `trading_bot/strategies/xrp_breakout_uniform_1h.py`: XRP — +940%, Sharpe 2.28, 1 163 trades
+- `trading_bot/strategies/doge_breakout_uniform_1h.py`: DOGE — +10 142%, Sharpe 2.96, 1 600 trades
+
+### Other strategies (not in active config)
 - `trading_bot/strategies/btc_momentum_score_1h.py`: BTC momentum score composite (SMA20+RSI+MACD+vol, TP 6%/SL 2.5%)
 - `trading_bot/strategies/eth_breakout_relaxed_1h.py`: ETH breakout lb=35 (anti-wick 60%, TP 3.5%/SL 1.8%)
-- `trading_bot/strategies/sol_breakout_normal_1h.py`: SOL breakout lb=14 (anti-wick 40%, TP 4%/SL 0.9%)
 - `trading_bot/strategies/sol_breakout_safe_1h.py`: SOL breakout lb=15 (TP 6%/SL 1%)
 - `trading_bot/strategies/sol_breakout_aggressive_1h.py`: SOL breakout lb=10 (lev 7x, TP 8%/SL 1%)
 

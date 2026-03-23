@@ -4,20 +4,21 @@ from trading_bot.strategies.template import TemplateStrategy
 
 
 class DogeBreakoutUniform1h(TemplateStrategy):
-    """DOGE Breakout Uniform — Lookback 32, SL 0.3%, TP 4%.
+    """DOGE Breakout Uniform 1H
+    ========================
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
 
-    6-Coin Uniform profile: identical parameters across all coins.
-    Backtest: +2217% (3Y) on DOGE — best performer in the portfolio.
+    Backtest realiste (2020-07 -> 2026-03) — compounding, frais maker/taker, funding :
+      Return   : +10 142%   Sharpe : 2.96   MaxDD : 11.3%   Trades : 1 600
+      PF       : 2.16       Fees   : $19 768
 
-    Logique :
-      - Breakout haut : mid_price > HIGH(32 dernieres bougies)
-      - Breakout bas  : mid_price < LOW(32 dernieres bougies)
-      - Filtre volume : vol_ratio >= 0.8
-      - Direction     : long si prix > SMA50, short sinon
+    Contexte :
+      92% du PnL genere en 2024-2026 (effet compounding + volatilite DOGE elevee).
+      Meilleur performer du portefeuille sur tous les axes (return, Sharpe, PF).
+      Volatilite DOGE >> BTC : breakouts a +4% en 1h plus frequents -> edge amplifie.
+      Max win : $6 522 (vs $1 556 pour BTC) — consequence du sizing compose.
 
-    SL tres serre (0.3%) — scalping de breakout. Beaucoup de trades
-    mais ratio TP/SL de 13:1 compense le faible WR.
-    Sizing 35% — excellent ratio rendement/risque.
+    Groupe : 6-coin-uniform
     """
 
     def __init__(self):

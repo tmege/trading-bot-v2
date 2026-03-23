@@ -3,27 +3,26 @@ import logging
 from trading_bot.strategies.template import TemplateStrategy
 
 
-class BnbBreakoutUniform1h(TemplateStrategy):
-    """BNB Breakout Uniform 1H
-    ========================
-    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
+class HypeBreakoutUniform1h(TemplateStrategy):
+    """HYPE Breakout Uniform — Lookback 32, SL 0.3%, TP 4%.
 
-    Backtest realiste (2022-01 -> 2026-03) — compounding, frais maker/taker, funding :
-      Return   : +673%      Sharpe : 2.06   MaxDD : 10.2%   Trades : 1 178
-      PF       : 1.71       Fees   : $1 933
+    6-Coin Uniform profile: identical parameters across all coins.
+    HYPE = Hyperliquid native token — added to the uniform portfolio.
 
-    Contexte :
-      84% du PnL genere en 2024-2026 (effet compounding).
-      Historique le plus court (4 ans) avec XRP. Return le plus bas du groupe
-      mais MaxDD le plus bas aussi (10.2%) — role de coussin de drawdown
-      dans le portefeuille. WR 13.8%, le plus faible des 6.
+    Logique :
+      - Breakout haut : mid_price > HIGH(32 dernieres bougies)
+      - Breakout bas  : mid_price < LOW(32 dernieres bougies)
+      - Filtre volume : vol_ratio >= 0.8
+      - Direction     : long si prix > SMA50, short sinon
 
-    Groupe : 6-coin-uniform
+    SL tres serre (0.3%) — scalping de breakout. Beaucoup de trades
+    mais ratio TP/SL de 13:1 compense le faible WR.
+    Sizing 35% — excellent ratio rendement/risque.
     """
 
     def __init__(self):
         super().__init__()
-        self.name = "bnb_breakout_uniform_1h"
+        self.name = "hype_breakout_uniform_1h"
         self.tp_pct = 0.04
         self.sl_pct = 0.003
         self.equity_pct = 0.35

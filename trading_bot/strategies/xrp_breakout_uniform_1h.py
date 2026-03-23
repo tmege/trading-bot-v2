@@ -4,20 +4,21 @@ from trading_bot.strategies.template import TemplateStrategy
 
 
 class XrpBreakoutUniform1h(TemplateStrategy):
-    """XRP Breakout Uniform — Lookback 32, SL 0.3%, TP 4%.
+    """XRP Breakout Uniform 1H
+    ========================
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
 
-    6-Coin Uniform profile: identical parameters across all coins.
-    Backtest: +417% (3Y), MaxDD 13.8%, Sharpe ~2.1.
+    Backtest realiste (2022-01 -> 2026-03) — compounding, frais maker/taker, funding :
+      Return   : +940%      Sharpe : 2.28   MaxDD : 11.4%   Trades : 1 163
+      PF       : 1.82       Fees   : $1 739
 
-    Logique :
-      - Breakout haut : mid_price > HIGH(32 dernieres bougies)
-      - Breakout bas  : mid_price < LOW(32 dernieres bougies)
-      - Filtre volume : vol_ratio >= 0.8
-      - Direction     : long si prix > SMA50, short sinon
+    Contexte :
+      89% du PnL genere en 2024-2026 (effet compounding).
+      Meilleur PF du groupe (1.82) — edge par trade le plus fort.
+      MaxDD contenu (11.4%) et Sharpe eleve (2.28). Historique court
+      (4 ans) mais comportement robuste malgre le bear 2022.
 
-    SL tres serre (0.3%) — scalping de breakout. Beaucoup de trades
-    mais ratio TP/SL de 13:1 compense le faible WR.
-    Sizing 35% — excellent ratio rendement/risque.
+    Groupe : 6-coin-uniform
     """
 
     def __init__(self):

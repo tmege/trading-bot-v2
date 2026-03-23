@@ -4,20 +4,20 @@ from trading_bot.strategies.template import TemplateStrategy
 
 
 class EthBreakoutUniform1h(TemplateStrategy):
-    """ETH Breakout Uniform — Lookback 32, SL 0.3%, TP 4%.
+    """ETH Breakout Uniform 1H
+    ========================
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
 
-    6-Coin Uniform profile: identical parameters across all coins.
-    Backtest: +417% (3Y), MaxDD 13.8%, Sharpe ~2.1.
+    Backtest realiste (2019-11 -> 2026-03) — compounding, frais maker/taker, funding :
+      Return   : +3 255%    Sharpe : 2.26   MaxDD : 12.8%   Trades : 1 829
+      PF       : 1.76       Fees   : $9 541
 
-    Logique :
-      - Breakout haut : mid_price > HIGH(32 dernieres bougies)
-      - Breakout bas  : mid_price < LOW(32 dernieres bougies)
-      - Filtre volume : vol_ratio >= 0.8
-      - Direction     : long si prix > SMA50, short sinon
+    Contexte :
+      66% du PnL genere en 2024-2026 (effet compounding).
+      Meilleur return absolu apres DOGE. Nombre de trades le plus eleve
+      du groupe (1 829) — bonne liquidite et volatilite suffisante.
 
-    SL tres serre (0.3%) — scalping de breakout. Beaucoup de trades
-    mais ratio TP/SL de 13:1 compense le faible WR.
-    Sizing 35% — excellent ratio rendement/risque.
+    Groupe : 6-coin-uniform
     """
 
     def __init__(self):

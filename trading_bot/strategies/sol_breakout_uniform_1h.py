@@ -4,20 +4,20 @@ from trading_bot.strategies.template import TemplateStrategy
 
 
 class SolBreakoutUniform1h(TemplateStrategy):
-    """SOL Breakout Uniform — Lookback 32, SL 0.3%, TP 4%.
+    """SOL Breakout Uniform 1H
+    ========================
+    Profil : SL 0.3% / TP 4% / lookback 32 / equity 35% / lev 5x / no anti-wick
 
-    6-Coin Uniform profile: identical parameters across all coins.
-    Backtest: +417% (3Y), MaxDD 13.8%, Sharpe ~2.1.
+    Backtest realiste (2020-09 -> 2026-03) — compounding, frais maker/taker, funding :
+      Return   : +2 503%    Sharpe : 2.30   MaxDD : 13.0%   Trades : 1 889
+      PF       : 1.69       Fees   : $7 194
 
-    Logique :
-      - Breakout haut : mid_price > HIGH(32 dernieres bougies)
-      - Breakout bas  : mid_price < LOW(32 dernieres bougies)
-      - Filtre volume : vol_ratio >= 0.8
-      - Direction     : long si prix > SMA50, short sinon
+    Contexte :
+      76% du PnL genere en 2024-2026 (effet compounding).
+      Plus grand nombre de trades du groupe (1 889). PF le plus bas (1.69)
+      mais Sharpe solide (2.30) — edge regulier malgre un WR de 14.4%.
 
-    SL tres serre (0.3%) — scalping de breakout. Beaucoup de trades
-    mais ratio TP/SL de 13:1 compense le faible WR.
-    Sizing 35% — excellent ratio rendement/risque.
+    Groupe : 6-coin-uniform
     """
 
     def __init__(self):
