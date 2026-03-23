@@ -73,7 +73,7 @@
     if (!strats) return;
     const coinSet = new Set();
     strats.forEach(s => {
-      if (s.coins) s.coins.forEach(c => coinSet.add(c));
+      if (s.coins && s.status !== 'DISABLED') s.coins.forEach(c => coinSet.add(c));
     });
     trackedCoins = [...coinSet];
     renderPrices(TB.state.get('mids'));
