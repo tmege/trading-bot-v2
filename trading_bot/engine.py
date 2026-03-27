@@ -17,6 +17,11 @@ from trading_bot.strategy.loader import StrategyLoader, StrategyInfo
 from trading_bot.risk.risk_manager import RiskManager
 from trading_bot.data.data_manager import DataManager
 from trading_bot.report.dashboard import Dashboard
+from trading_bot.notifications import (
+    send_telegram_async,
+    format_entry_notification,
+    format_exit_notification,
+)
 
 log = logging.getLogger(__name__)
 
@@ -482,6 +487,46 @@ class Engine:
                 strategy, fill.closed_pnl.to_float(), fill.fee.to_float()
             )
 
+        # Persist paper exchange state (positions, orders, balance) after every fill
+        self._save_engine_state()
+
+        # Fire-and-forget trade notification
+        if self._loop and info and info.instance:
+            self._loop.create_task(self._notify_trade(strategy, fill, info.instance))
+
+    async def _notify_trade(self, strategy: str, fill: Fill, instance: object) -> None:
+        try:
+            is_entry = fill.closed_pnl.to_float() == 0
+
+            if is_entry:
+                msg = format_entry_notification(
+                    strategy_name=strategy,
+                    coin=fill.coin,
+                    side=fill.side.value,
+                    px=fill.px.to_float(),
+                    sz=fill.sz.to_float(),
+                    leverage=getattr(instance, "leverage", 1),
+                    sl_pct=getattr(instance, "sl_pct", 0),
+                    tp_pct=getattr(instance, "tp_pct", 0),
+                )
+            else:
+                msg = format_exit_notification(
+                    strategy_name=strategy,
+                    coin=fill.coin,
+                    exit_px=fill.px.to_float(),
+                    entry_px=getattr(instance, "entry_price", 0),
+                    entry_time=getattr(instance, "entry_time", 0),
+                    exit_time_ms=fill.time_ms,
+                    pnl=fill.closed_pnl.to_float(),
+                    fee=fill.fee.to_float(),
+                    trade_count=getattr(instance, "trade_count", 0),
+                    win_count=getattr(instance, "win_count", 0),
+                )
+
+            await send_telegram_async(msg)
+        except Exception:
+            log.debug("Failed to send trade notification", exc_info=True)
+
     # --- Timer ---
 
     def _get_total_unrealized_pnl(self) -> float:
@@ -512,19 +557,19 @@ class Engine:
                 account_value = self._global_paper.equity
             elif self.rest and self.config.wallet_address:
                 last_err = None
-                for attempt in range(2):
+                for attempt in range(3):
                     try:
-                        acc = self.rest.get_account(self.config.wallet_address, timeout=10.0)
+                        acc = self.rest.get_account(self.config.wallet_address, timeout=15.0)
                         account_value = acc.account_value.to_float()
                         last_err = None
                         break
                     except Exception as e:
                         last_err = e
-                        if attempt == 0:
-                            log.warning("Emergency close check: get_account timeout, retrying...")
-                            await asyncio.sleep(1)
+                        if attempt < 2:
+                            log.warning("Emergency close check: get_account timeout (attempt %d/3), retrying...", attempt + 1)
+                            await asyncio.sleep(2)
                 if last_err:
-                    log.error("Emergency close check: get_account failed after 2 attempts: %s", last_err)
+                    log.error("Emergency close check: get_account failed after 3 attempts: %s", last_err)
                     return
 
             if account_value <= 0:
@@ -541,6 +586,13 @@ class Engine:
                     self.config.risk.emergency_close_pct, account_value,
                 )
                 await self._emergency_close_all()
+                await send_telegram_async(
+                    "<b>EMERGENCY CLOSE</b>\n"
+                    f"Daily PnL: <b>${total_pnl:.2f}</b>\n"
+                    f"Realized: ${realized_pnl:.2f} | Unrealized: ${unrealized_pnl:.2f}\n"
+                    f"Threshold: {self.config.risk.emergency_close_pct}% of ${account_value:.2f}\n"
+                    "All strategies suspended."
+                )
         except Exception:
             log.exception("Error checking emergency close")
 

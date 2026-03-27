@@ -47,6 +47,7 @@ class PaperExchange:
         self.initial_balance = initial_balance
         self._positions: dict[str, PaperPosition] = {}
         self._orders: list[PaperOrder] = []
+        self._leverages: dict[str, int] = {}
         self._next_oid = 1000000
         self._next_tid = 2000000
         self._fills: list[Fill] = []
@@ -56,6 +57,9 @@ class PaperExchange:
     def equity(self) -> float:
         total_unreal = sum(p.unrealized_pnl for p in self._positions.values())
         return self.balance + total_unreal
+
+    def set_leverage(self, coin: str, leverage: int) -> None:
+        self._leverages[coin] = leverage
 
     def get_position(self, coin: str) -> Position | None:
         pp = self._positions.get(coin)
@@ -67,6 +71,7 @@ class PaperExchange:
             entry_px=Decimal.from_float(pp.entry_px),
             unrealized_pnl=Decimal.from_float(pp.unrealized_pnl),
             realized_pnl=Decimal.from_float(pp.realized_pnl),
+            leverage=self._leverages.get(coin, 1),
         )
 
     def get_open_orders(self, coin: str | None = None) -> list[Order]:
@@ -280,6 +285,7 @@ class PaperExchange:
             "initial_balance": self.initial_balance,
             "positions": positions,
             "orders": orders,
+            "leverages": self._leverages,
             "next_oid": self._next_oid,
             "next_tid": self._next_tid,
         }
@@ -289,6 +295,7 @@ class PaperExchange:
         self.initial_balance = d.get("initial_balance", self.initial_balance)
         self._next_oid = d.get("next_oid", self._next_oid)
         self._next_tid = d.get("next_tid", self._next_tid)
+        self._leverages = {k: int(v) for k, v in d.get("leverages", {}).items()}
 
         for coin, pdata in d.get("positions", {}).items():
             self._positions[coin] = PaperPosition(

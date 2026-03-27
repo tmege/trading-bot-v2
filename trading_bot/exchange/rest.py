@@ -150,6 +150,8 @@ class RestClient:
 
     def get_account(self, address: str, timeout: float | None = None) -> Account:
         data = self._info_post({"type": "clearinghouseState", "user": address}, timeout=timeout)
+        if not isinstance(data, dict):
+            raise ValueError(f"get_account: expected dict, got {type(data).__name__}")
         margin = data.get("marginSummary", {})
         positions_raw = data.get("assetPositions", [])
         positions = []

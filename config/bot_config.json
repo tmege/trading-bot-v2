@@ -16,31 +16,6 @@
     "reload_interval_sec": 5,
     "active": [
       {
-        "file": "btc_inside_bar_breakout_1h.py",
-        "role": "primary",
-        "coins": ["BTC"],
-        "paper_mode": true,
-        "group": "4-strat-mix"
-      },
-      {
-        "file": "sol_breakout_normal_1h.py",
-        "coins": ["SOL"],
-        "paper_mode": true,
-        "group": "4-strat-mix"
-      },
-      {
-        "file": "xrp_mean_reversion_bb_1h.py",
-        "coins": ["XRP"],
-        "paper_mode": true,
-        "group": "4-strat-mix"
-      },
-      {
-        "file": "bnb_breakout_relaxed_1h.py",
-        "coins": ["BNB"],
-        "paper_mode": true,
-        "group": "4-strat-mix"
-      },
-      {
         "file": "sol_breakout_uniform_1h.py",
         "coins": ["SOL"],
         "paper_mode": true,

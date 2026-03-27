@@ -63,6 +63,14 @@ class TemplateStrategy:
             self._monitor_position(mid_price, now)
             return
 
+        # Don't scan for new signals if an entry order is already pending
+        if self.entry_oid:
+            if now - self.entry_placed_at > self.entry_timeout_sec:
+                self.api.cancel(self.coin, self.entry_oid)
+                self.entry_oid = 0
+                self.api.log(logging.DEBUG, "Pending entry expired, cancelled")
+            return
+
         if now - self.last_trade < self.cooldown_sec:
             return
 
@@ -135,6 +143,8 @@ class TemplateStrategy:
         size = self._compute_size(mid_price)
         if size <= 0:
             return
+
+        self.api.set_leverage(self.coin, self.leverage)
 
         if side == "buy":
             price = mid_price * (1 - self.entry_offset_pct)

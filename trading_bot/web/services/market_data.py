@@ -48,50 +48,6 @@ def get_global_market() -> dict:
             "btc_dominance": 0, "total_market_cap": 0, "total2": 0, "total3": 0
         }
 
-
-def get_forex() -> dict:
-    cached = _from_cache("forex")
-    if cached:
-        return cached
-
-    try:
-        last_err = None
-        resp = None
-        for _attempt in range(2):
-            try:
-                resp = _get_client().get(
-                    "https://api.frankfurter.app/latest",
-                    params={"from": "USD", "to": "EUR,GBP,JPY,CHF"},
-                    timeout=8.0,
-                )
-                resp.raise_for_status()
-                last_err = None
-                break
-            except Exception as e:
-                last_err = e
-                time.sleep(1)
-        if last_err or resp is None:
-            raise last_err or RuntimeError("forex fetch failed")
-        rates_raw = resp.json().get("rates", {})
-
-        rates = {}
-        if "EUR" in rates_raw and rates_raw["EUR"] > 0:
-            rates["EUR/USD"] = round(1.0 / rates_raw["EUR"], 5)
-        if "GBP" in rates_raw and rates_raw["GBP"] > 0:
-            rates["GBP/USD"] = round(1.0 / rates_raw["GBP"], 5)
-        if "JPY" in rates_raw:
-            rates["USD/JPY"] = round(rates_raw["JPY"], 3)
-        if "CHF" in rates_raw:
-            rates["USD/CHF"] = round(rates_raw["CHF"], 5)
-
-        result = {"rates": rates}
-        _to_cache("forex", result)
-        return result
-    except Exception:
-        log.warning("Failed to fetch Frankfurter forex data")
-        return _from_cache("forex") or {"rates": {}}
-
-
 def get_market_phase(db) -> dict:
     if not db:
         return {"phase": "unknown", "recommended_strategies": [], "indicators": {}}

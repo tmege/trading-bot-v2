@@ -51,11 +51,11 @@
     renderPrices(TB.state.get('mids'));
 
     loadOverview();
-    loadGlobalForex();
+    loadGlobalMarket();
     loadDigest();
 
     intervals.push(setInterval(loadOverview, 120000));
-    intervals.push(setInterval(loadGlobalForex, 120000));
+    intervals.push(setInterval(loadGlobalMarket, 120000));
     intervals.push(setInterval(loadVolumes, 120000));
     // Check once per minute if it's noon and digest needs refresh
     intervals.push(setInterval(checkDigestRefresh, 60000));
@@ -262,17 +262,13 @@
     return '#3fb950';
   }
 
-  // --- Global Market + Forex combined ---
-  async function loadGlobalForex() {
-    const [globalData, forexData] = await Promise.all([
-      TB.api.get('/api/market/global'),
-      TB.api.get('/api/market/forex'),
-    ]);
+  // --- Global Market ---
+  async function loadGlobalMarket() {
+    const globalData = await TB.api.get('/api/market/global');
     const el = document.getElementById('mkt-global-forex');
     if (!el) return;
 
     const g = globalData || {};
-    const rates = (forexData && forexData.rates) || {};
 
     el.innerHTML = `
       <div class="global-forex-grid">
@@ -292,13 +288,6 @@
           <div class="gf-label">TOTAL3 (ex-BTC-ETH)</div>
           <div class="gf-value">$${TB.utils.fmtBigNum(g.total3 || 0)}</div>
         </div>
-        <div class="gf-divider"></div>
-        ${Object.entries(rates).map(([pair, rate]) => `
-          <div class="gf-metric">
-            <div class="gf-label">${TB.utils.esc(pair)}</div>
-            <div class="gf-value" style="font-size:15px;">${rate}</div>
-          </div>
-        `).join('')}
       </div>
     `;
   }

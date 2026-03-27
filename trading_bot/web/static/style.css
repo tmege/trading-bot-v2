@@ -543,10 +543,6 @@ pre[class*="language-"] {
 }
 .gf-metric .gf-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; }
 .gf-metric .gf-value { font-size: 18px; font-weight: 700; font-family: var(--mono); margin-top: 2px; }
-.gf-divider {
-  grid-column: 1 / -1; height: 1px; background: var(--border);
-  margin: 4px 0;
-}
 
 /* Digest redesign */
 .digest-header {

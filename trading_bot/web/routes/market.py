@@ -61,12 +61,6 @@ async def get_global():
     return get_global_market()
 
 
-@router.get("/forex")
-async def get_forex():
-    from trading_bot.web.services.market_data import get_forex
-    return get_forex()
-
-
 @router.get("/phase")
 async def get_phase():
     from trading_bot.web.services.market_data import get_market_phase

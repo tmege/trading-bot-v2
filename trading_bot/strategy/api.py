@@ -126,6 +126,10 @@ class StrategyAPI:
             return 0
         return self._order_manager.cancel_all(self.strategy_name, coin)
 
+    def set_leverage(self, coin: str, leverage: int) -> None:
+        if self._order_manager:
+            self._order_manager.set_leverage(self.strategy_name, coin, leverage)
+
     # --- Position ---
 
     def get_position(self, coin: str) -> Position | None:

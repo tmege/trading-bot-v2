@@ -88,6 +88,19 @@ class OrderManager:
     def _get_vault(self, strategy: str) -> str | None:
         return self._vault_address
 
+    def set_leverage(self, strategy: str, coin: str, leverage: int) -> None:
+        paper = self._get_exchange(strategy)
+        if paper:
+            paper.set_leverage(coin, leverage)
+            return
+        if self._rest:
+            try:
+                asset = 0
+                vault = self._get_vault(strategy)
+                self._rest.update_leverage(asset, leverage, vault_address=vault)
+            except Exception:
+                log.exception(f"Failed to set leverage {leverage}x for {coin}")
+
     def place_order(
         self, strategy: str, req: OrderRequest,
         vault_override: str | None = None,
