@@ -2,6 +2,7 @@ import ast
 import importlib.util
 import logging
 import os
+import threading
 from pathlib import Path
 
 from trading_bot.strategy.api import StrategyAPI
@@ -45,19 +46,21 @@ class StrategyLoader:
     def __init__(self, strategy_dir: str = "./strategies"):
         self._dir = str(Path(strategy_dir).resolve())
         self._loaded: dict[str, StrategyInfo] = {}
+        self._reload_lock = threading.Lock()
 
     def load_strategy(
         self, file_name: str, coins: list[str], api: StrategyAPI,
     ) -> StrategyInfo:
         file_path = os.path.join(self._dir, file_name)
+
+        # M-01: Check symlink BEFORE resolve to prevent TOCTOU
+        if os.path.islink(file_path):
+            raise ValueError(f"Symlinks not allowed: {file_name}")
+
         resolved = str(Path(file_path).resolve())
 
         if not Path(resolved).is_relative_to(Path(self._dir)):
             raise ValueError(f"Path traversal blocked: {file_name}")
-
-        # C-01/M-01: Block symlinks to prevent escape from strategies dir
-        if os.path.islink(file_path):
-            raise ValueError(f"Symlinks not allowed: {file_name}")
 
         if not os.path.exists(resolved):
             raise FileNotFoundError(f"Strategy file not found: {resolved}")
@@ -85,32 +88,33 @@ class StrategyLoader:
 
     def check_reload(self) -> list[str]:
         reloaded = []
-        for name, info in self._loaded.items():
-            if not os.path.exists(info.file_path):
-                continue
-            # M-01: Block symlinks on reload too
-            if os.path.islink(info.file_path):
-                log.warning(f"Symlink detected on reload, skipping: {name}")
-                info.errored = True
-                continue
-            current_mtime = os.path.getmtime(info.file_path)
-            if current_mtime > info.mtime:
-                log.info(f"Hot-reloading strategy: {name}")
-                try:
-                    _audit_strategy_file(info.file_path)
-                    instance = self._load_module(info.file_path, name)
-                    instance.coin = info.coins[0] if info.coins else ""
-                    instance.errored = False
-                    if not hasattr(instance, "name"):
-                        instance.name = name
-                    instance.on_init(info.api)
-                    info.instance = instance
-                    info.mtime = current_mtime
-                    info.errored = False
-                    reloaded.append(name)
-                except Exception:
-                    log.exception(f"Failed to hot-reload {name}")
+        with self._reload_lock:
+            for name, info in self._loaded.items():
+                if not os.path.exists(info.file_path):
+                    continue
+                # M-01: Block symlinks on reload too
+                if os.path.islink(info.file_path):
+                    log.warning(f"Symlink detected on reload, skipping: {name}")
                     info.errored = True
+                    continue
+                current_mtime = os.path.getmtime(info.file_path)
+                if current_mtime > info.mtime:
+                    log.info(f"Hot-reloading strategy: {name}")
+                    try:
+                        _audit_strategy_file(info.file_path)
+                        instance = self._load_module(info.file_path, name)
+                        instance.coin = info.coins[0] if info.coins else ""
+                        instance.errored = False
+                        if not hasattr(instance, "name"):
+                            instance.name = name
+                        instance.on_init(info.api)
+                        info.instance = instance
+                        info.mtime = current_mtime
+                        info.errored = False
+                        reloaded.append(name)
+                    except Exception:
+                        log.exception(f"Failed to hot-reload {name}")
+                        info.errored = True
         return reloaded
 
     def get_all(self) -> list[StrategyInfo]:

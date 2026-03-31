@@ -82,7 +82,17 @@ class RestClient:
 
     def get_all_mids(self) -> dict[str, float]:
         data = self._info_post({"type": "allMids"})
-        return {coin: float(mid) for coin, mid in data.items()} if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        mids = {}
+        for coin, mid in data.items():
+            try:
+                price = float(mid)
+                if 0 < price < float('inf'):
+                    mids[coin] = price
+            except (ValueError, TypeError):
+                continue
+        return mids
 
     def get_asset_ctxs(self) -> list[AssetCtx]:
         data = self._info_post({"type": "metaAndAssetCtxs"})

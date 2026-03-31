@@ -34,6 +34,7 @@ class XrpBreakoutUniform1h(TemplateStrategy):
 
         self.lookback = 32
         self.vol_min = 0.8
+        self.max_atr_pct_rank = 0.95
 
     def _scan_signals(self, ind, mid_price):
         if mid_price <= 0:

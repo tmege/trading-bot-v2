@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -11,11 +12,13 @@ log = logging.getLogger(__name__)
 CIRCUIT_BREAKER_WINDOW = 900
 CIRCUIT_BREAKER_MOVE = 0.07
 CIRCUIT_BREAKER_MAX_MOVE = 5.0  # >500% = data anomaly, ignore
+MAX_TRACKED_COINS = 200
 
 
 class RiskManager:
     def __init__(self, config: RiskConfig):
         self._config = config
+        self._lock = threading.RLock()
         self._paused = False
         self._daily_pnl: dict[str, float] = {}
         self._daily_fees: dict[str, float] = {}
@@ -36,11 +39,13 @@ class RiskManager:
         return self._paused
 
     def pause(self) -> None:
-        self._paused = True
+        with self._lock:
+            self._paused = True
         log.warning("Risk manager: PAUSED")
 
     def unpause(self) -> None:
-        self._paused = False
+        with self._lock:
+            self._paused = False
         log.info("Risk manager: UNPAUSED")
 
     def check_order(
@@ -49,33 +54,34 @@ class RiskManager:
         account_value: float,
         strategy: str,
     ) -> tuple[bool, str]:
-        self._maybe_reset_daily()
+        with self._lock:
+            self._maybe_reset_daily()
 
-        if self._paused:
-            return False, "trading paused"
+            if self._paused:
+                return False, "trading paused"
 
-        if self._config.daily_loss_pct > 0:
-            daily_pnl = self._daily_pnl.get(strategy, 0.0)
-            max_loss = account_value * self._config.daily_loss_pct / 100.0
-            if abs(daily_pnl) > max_loss and daily_pnl < 0:
-                return False, f"daily loss limit {daily_pnl:.2f} > {max_loss:.2f} [{strategy}]"
+            if self._config.daily_loss_pct > 0:
+                daily_pnl = self._daily_pnl.get(strategy, 0.0)
+                max_loss = account_value * self._config.daily_loss_pct / 100.0
+                if abs(daily_pnl) > max_loss and daily_pnl < 0:
+                    return False, f"daily loss limit {daily_pnl:.2f} > {max_loss:.2f} [{strategy}]"
 
-        notional = req.price.to_float() * req.size.to_float()
+            notional = req.price.to_float() * req.size.to_float()
 
-        if account_value > 0:
-            order_leverage = notional / account_value
-            if order_leverage > self._config.max_leverage:
-                return False, f"leverage {order_leverage:.1f}x > max {self._config.max_leverage}x"
+            if account_value > 0:
+                order_leverage = notional / account_value
+                if order_leverage > self._config.max_leverage:
+                    return False, f"leverage {order_leverage:.1f}x > max {self._config.max_leverage}x"
 
-        if account_value > 0:
-            max_pos = account_value * self._config.max_position_pct / 100.0
-            if notional > max_pos:
-                return False, f"position {notional:.2f} > max {max_pos:.2f}"
+            if account_value > 0:
+                max_pos = account_value * self._config.max_position_pct / 100.0
+                if notional > max_pos:
+                    return False, f"position {notional:.2f} > max {max_pos:.2f}"
 
-        if req.coin in self._circuit_breaker_coins and not req.reduce_only:
-            return False, f"circuit breaker active for {req.coin}"
+            if req.coin in self._circuit_breaker_coins and not req.reduce_only:
+                return False, f"circuit breaker active for {req.coin}"
 
-        return True, ""
+            return True, ""
 
     def check_emergency_close(self, account_value: float, daily_pnl: float) -> bool:
         if self._config.emergency_close_pct <= 0:
@@ -86,6 +92,8 @@ class RiskManager:
     def update_price(self, coin: str, price: float) -> None:
         now = time.time()
         if coin not in self._price_history:
+            if len(self._price_history) >= MAX_TRACKED_COINS:
+                return
             self._price_history[coin] = deque()
 
         history = self._price_history[coin]
@@ -118,9 +126,10 @@ class RiskManager:
         return sum(abs(v) for v in self._positions_notional.values())
 
     def record_trade(self, strategy: str, pnl: float, fee: float) -> None:
-        self._daily_pnl[strategy] = self._daily_pnl.get(strategy, 0.0) + pnl
-        self._daily_fees[strategy] = self._daily_fees.get(strategy, 0.0) + fee
-        self._daily_trades[strategy] = self._daily_trades.get(strategy, 0) + 1
+        with self._lock:
+            self._daily_pnl[strategy] = self._daily_pnl.get(strategy, 0.0) + pnl
+            self._daily_fees[strategy] = self._daily_fees.get(strategy, 0.0) + fee
+            self._daily_trades[strategy] = self._daily_trades.get(strategy, 0) + 1
 
     def get_strategy_daily_pnl(self, strategy: str) -> float:
         return self._daily_pnl.get(strategy, 0.0)
@@ -158,6 +167,9 @@ class RiskManager:
         }
 
     def from_dict(self, d: dict) -> None:
+        if not isinstance(d, dict):
+            log.warning("Risk manager from_dict: expected dict, got %s — ignored", type(d).__name__)
+            return
         raw_pnl = d.get("daily_pnl", {})
         raw_fees = d.get("daily_fees", {})
         raw_trades = d.get("daily_trades", {})

@@ -31,6 +31,7 @@ async def verify_api_key(
     """Check X-API-Key header first, fall back to ?api_key= query param (for SSE/EventSource)."""
     key = api_key_header or api_key or ""
     if not _API_KEY or not key or not secrets.compare_digest(key, _API_KEY):
+        log.warning("Authentication failed — invalid or missing API key")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -53,6 +54,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Cache-Control"] = "no-store"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         # Skip CSP if already set by the route handler (e.g. index with nonce)
         if "Content-Security-Policy" not in response.headers:
             response.headers["Content-Security-Policy"] = (
@@ -83,7 +85,7 @@ def create_app(engine, stop_event=None) -> FastAPI:
         CORSMiddleware,
         allow_origins=[],
         allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["*"],
+        allow_headers=["Content-Type", "X-API-Key"],
     )
 
     static_dir = Path(__file__).parent / "static"
@@ -116,7 +118,7 @@ def create_app(engine, stop_event=None) -> FastAPI:
         html = html_path.read_text(encoding="utf-8")
         # M-07: Inject API key safely with JSON encoding + CSP nonce to prevent XSS
         nonce = secrets.token_urlsafe(16)
-        safe_key = json.dumps(_API_KEY)
+        safe_key = json.dumps(_API_KEY).replace("<", "\\u003c").replace(">", "\\u003e")
         inject = f'<script nonce="{nonce}">window.__TB_API_KEY__={safe_key};</script>'
         html = html.replace("</head>", inject + "\n</head>")
         response = HTMLResponse(content=html)

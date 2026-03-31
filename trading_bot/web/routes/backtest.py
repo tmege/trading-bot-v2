@@ -83,7 +83,8 @@ async def run_backtest(request: Request):
             end_ms=end_ms,
         )
     except RuntimeError as e:
-        return {"error": str(e)}
+        log.warning("Backtest run failed: %s", e)
+        return {"error": "Backtest failed. Check server logs for details."}
 
     return {"run_id": run_id}
 

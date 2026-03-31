@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+import threading
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ class Database:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         self.path = str(resolved)
         self.conn: sqlite3.Connection | None = None
+        self._lock = threading.RLock()
 
     def open(self) -> None:
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
@@ -105,23 +107,28 @@ class Database:
 
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
         assert self.conn is not None
-        return self.conn.execute(sql, params)
+        with self._lock:
+            return self.conn.execute(sql, params)
 
     def executemany(self, sql: str, params_list: list[tuple]) -> None:
         assert self.conn is not None
-        self.conn.executemany(sql, params_list)
+        with self._lock:
+            self.conn.executemany(sql, params_list)
 
     def commit(self) -> None:
         assert self.conn is not None
-        self.conn.commit()
+        with self._lock:
+            self.conn.commit()
 
     def fetchone(self, sql: str, params: tuple = ()) -> sqlite3.Row | None:
         assert self.conn is not None
-        return self.conn.execute(sql, params).fetchone()
+        with self._lock:
+            return self.conn.execute(sql, params).fetchone()
 
     def fetchall(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         assert self.conn is not None
-        return self.conn.execute(sql, params).fetchall()
+        with self._lock:
+            return self.conn.execute(sql, params).fetchall()
 
     # --- Strategy state ---
 

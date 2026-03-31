@@ -1,6 +1,7 @@
 import logging
+import re
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +40,10 @@ async def get_candles(
     interval: str = Query(default="1h"),
     limit: int = Query(default=100, le=500),
 ):
+    if not re.match(r'^[A-Z]{1,10}$', coin):
+        raise HTTPException(status_code=400, detail="Invalid coin format")
+    if interval not in ("1m", "5m", "15m", "1h", "4h", "1d"):
+        raise HTTPException(status_code=400, detail="Invalid interval")
     if not _engine or not _engine.db:
         return []
     rows = _engine.db.get_candles(coin, interval, limit)

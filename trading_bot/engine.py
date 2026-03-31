@@ -351,10 +351,18 @@ class Engine:
                 return
 
             state = json.loads(raw)
+            if not isinstance(state, dict):
+                log.warning("Engine state is not a dict — ignored")
+                self._apply_default_group_state()
+                return
 
             # Risk manager
             if self.risk_manager and "risk_manager" in state:
-                self.risk_manager.from_dict(state["risk_manager"])
+                rm_state = state["risk_manager"]
+                if isinstance(rm_state, dict):
+                    self.risk_manager.from_dict(rm_state)
+                else:
+                    log.warning("Risk manager state is not a dict — ignored")
                 # Clear emergency pause on restart — daily reset will handle it properly
                 if self.risk_manager.paused:
                     self.risk_manager.unpause()
@@ -600,13 +608,13 @@ class Engine:
         """Close all positions and suspend all strategies."""
         log.critical("EMERGENCY: Closing all positions")
 
-        # 1. Suspend all strategies immediately
-        for info in self._strategies:
-            info.errored = True
-
-        # 2. Pause risk manager
+        # 1. Pause risk manager FIRST to block any new orders
         if self.risk_manager:
             self.risk_manager.pause()
+
+        # 2. Suspend all strategies
+        for info in self._strategies:
+            info.errored = True
 
         # 3. Close paper positions
         if self.order_manager:

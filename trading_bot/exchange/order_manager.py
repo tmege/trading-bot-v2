@@ -36,7 +36,7 @@ class OrderManager:
         self._risk_manager = risk_manager
 
         self._strategy_papers: dict[str, PaperExchange] = {}
-        self._strategy_coins: dict[str, str] = {}
+        self._strategy_coins: dict[str, list[str]] = {}
         self._coin_strategy: dict[str, str] = {}
 
         self._on_fill_dispatch: FillDispatch | None = None
@@ -50,8 +50,8 @@ class OrderManager:
         self, name: str, coins: list[str],
         paper: PaperExchange | None = None,
     ) -> None:
+        self._strategy_coins[name] = coins
         for coin in coins:
-            self._strategy_coins[name] = coin
             self._coin_strategy[coin] = name
 
         if paper:
