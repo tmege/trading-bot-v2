@@ -223,7 +223,7 @@ async def toggle_group(group_name: str):
     if not _engine.config:
         return {"error": "no config loaded"}
 
-    groups, _ = _build_coin_group_map()
+    groups, strat_coins = _build_coin_group_map()
 
     if group_name not in groups:
         return {"error": "group not found"}
@@ -247,16 +247,22 @@ async def toggle_group(group_name: str):
                     info.disabled = True
             action = "disabled"
         else:
-            # Enable target group, disable other groups
-            other_names = set()
+            # Enable target group, only disable strategies with coin conflicts
+            target_coins = set()
+            for name in target_names:
+                target_coins.update(strat_coins.get(name, set()))
+
+            conflict_names = set()
             for g in other_groups:
-                other_names.update(groups[g])
+                for member in groups[g]:
+                    if strat_coins.get(member, set()) & target_coins:
+                        conflict_names.add(member)
 
             for info in _engine._strategies:
                 if info.name in target_names:
                     info.disabled = False
                     info.errored = False
-                elif info.name in other_names:
+                elif info.name in conflict_names:
                     info.disabled = True
 
             action = "enabled"
@@ -279,10 +285,16 @@ async def toggle_group(group_name: str):
             disabled_list.update(target_names)
             action = "disabled"
         else:
-            # Enable target group, disable other groups
+            # Enable target group, only disable strategies with coin conflicts
+            target_coins = set()
+            for name in target_names:
+                target_coins.update(strat_coins.get(name, set()))
+
             disabled_list -= target_names
             for g in other_groups:
-                disabled_list.update(groups[g])
+                for member in groups[g]:
+                    if strat_coins.get(member, set()) & target_coins:
+                        disabled_list.add(member)
             action = "enabled"
 
         state["disabled_strategies"] = sorted(disabled_list)

@@ -53,6 +53,7 @@ _CONFIG_PATH = os.path.join(_CRYPTO_BOT_DIR, "config.yaml")
 # ═══════════════════════════════════════════════════════════════
 
 STRATEGY_MAP = {
+    # ── Legacy strategies (4-strat-mix) ──
     "btc_inside_bar_breakout_1h.py": {
         "v2_class": "StratInsideBarBreakout",
         "v2_params": {
@@ -123,6 +124,98 @@ STRATEGY_MAP = {
         "exec_config": ExecConfig(
             equity_pct=0.35, leverage=5,
             cooldown_bars=3, max_hold_bars=48,
+        ),
+        "signal_filter": None,
+    },
+    # ── Group: 4-coin-uniform ──
+    "sol_breakout_uniform_1h.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 32,
+            "vol_breakout_min": 0.8,
+            "sl_pct": 0.3,
+            "tp_pct": 4.0,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.25, leverage=5,
+            cooldown_bars=3, max_hold_bars=48,
+        ),
+        "signal_filter": None,
+    },
+    "bnb_breakout_uniform_1h.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 32,
+            "vol_breakout_min": 0.8,
+            "sl_pct": 0.3,
+            "tp_pct": 4.0,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.25, leverage=5,
+            cooldown_bars=3, max_hold_bars=48,
+        ),
+        "signal_filter": None,
+    },
+    "xrp_breakout_uniform_1h.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 32,
+            "vol_breakout_min": 0.8,
+            "sl_pct": 0.3,
+            "tp_pct": 4.0,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.25, leverage=5,
+            cooldown_bars=3, max_hold_bars=48,
+        ),
+        "signal_filter": None,
+    },
+    "doge_breakout_uniform_1h.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 32,
+            "vol_breakout_min": 0.8,
+            "sl_pct": 0.3,
+            "tp_pct": 4.0,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.25, leverage=5,
+            cooldown_bars=3, max_hold_bars=48,
+        ),
+        "signal_filter": None,
+    },
+    # ── Group: high-leverage ──
+    "btc_leveraged_breakout.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 6,
+            "vol_breakout_min": 1.2,
+            "sl_pct": 0.15,
+            "tp_pct": 2.5,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.15, leverage=20,
+            cooldown_bars=1, max_hold_bars=24,
+            maker_fee=0.00015, taker_fee=0.00045,
+            slippage_sl_bps=1.5, entry_offset=0.0002,
+            funding_rate_8h=0.0001,
+        ),
+        "signal_filter": None,
+    },
+    "eth_leveraged_breakout.py": {
+        "v2_class": "StratBreakoutRelaxed",
+        "v2_params": {
+            "lookback": 6,
+            "vol_breakout_min": 1.2,
+            "sl_pct": 0.15,
+            "tp_pct": 2.5,
+        },
+        "exec_config": ExecConfig(
+            equity_pct=0.15, leverage=20,
+            cooldown_bars=1, max_hold_bars=24,
+            maker_fee=0.00015, taker_fee=0.00045,
+            slippage_sl_bps=1.5, entry_offset=0.0002,
+            funding_rate_8h=0.0001,
         ),
         "signal_filter": None,
     },

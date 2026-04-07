@@ -8,7 +8,7 @@
   "risk": {
     "daily_loss_pct": 6.0,
     "emergency_close_pct": 5.0,
-    "max_leverage": 10,
+    "max_leverage": 20,
     "max_position_pct": 700.0
   },
   "strategies": {
@@ -38,6 +38,18 @@
         "coins": ["DOGE"],
         "paper_mode": true,
         "group": "4-coin-uniform"
+      },
+      {
+        "file": "btc_leveraged_breakout.py",
+        "coins": ["BTC"],
+        "paper_mode": true,
+        "group": "high-leverage"
+      },
+      {
+        "file": "eth_leveraged_breakout.py",
+        "coins": ["ETH"],
+        "paper_mode": true,
+        "group": "high-leverage"
       }
     ]
   },

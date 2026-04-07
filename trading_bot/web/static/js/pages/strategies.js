@@ -10,6 +10,7 @@
   const GROUP_META = {
     '4-strat-mix': {
       label: '4-Strat Mix',
+      icon: '\u{1F4CA}',
       stats: [
         '3Y Return: +244%  |  MaxDD: 8.7%',
         'Avg/month: +6.8%  |  Sharpe: ~1.8',
@@ -18,13 +19,25 @@
       ],
     },
     '4-coin-uniform': {
-      label: '4-Coin Uniform',
+      label: '4-Coin Uniform Breakout',
+      icon: '\u{1F4C8}',
       stats: [
         '3Y Return: +291%  |  MaxDD: 8.4%',
         'Avg/month: +8.1%  |  Sharpe: ~2.36',
         'Trades: ~3 538    |  Best: DOGE +509%',
-        'Coins: SOL+BNB+XRP+DOGE',
+        'Coins: SOL+BNB+XRP+DOGE  |  Lev: 5x',
         'Profil: SL 0.3% / TP 4% / lb 32 / eq 25%',
+      ],
+    },
+    'high-leverage': {
+      label: 'High Leverage',
+      icon: '\u26A1',
+      stats: [
+        '3Y Fixe: BTC +679% ETH +909% |  Sharpe: 3.0-3.4',
+        'PF: 1.64-1.67  |  MaxDD: 14-17%  |  Sem+: 5/5',
+        'Trades: ~4 692  |  ~4.3/jour  |  WR: ~13.5%',
+        'Coins: BTC+ETH  |  Lev: x20',
+        'Profil: SL 0.15% / TP 2.5% / lb 6 / eq 15%',
       ],
     },
   };
@@ -114,11 +127,16 @@
           ? '<span class="badge badge-green">ON</span>'
           : '<span class="badge badge-gray">OFF</span>';
 
-        return `<div style="flex:1;min-width:300px;border:2px solid ${borderColor};border-radius:8px;padding:14px;opacity:${opacity};transition:opacity 0.2s;">
+        const isHighLev = g === 'high-leverage';
+        const borderStyle = isHighLev && active ? 'border-color:var(--orange,#f59e0b);' : '';
+        const iconHtml = meta.icon ? `<span style="font-size:16px;margin-right:4px;">${meta.icon}</span>` : '';
+
+        return `<div style="flex:1;min-width:300px;border:2px solid ${borderColor};border-radius:8px;padding:14px;opacity:${opacity};transition:opacity 0.2s;${borderStyle}">
           <div class="flex gap-8 mb-12" style="align-items:center;justify-content:space-between;">
             <div class="flex gap-8" style="align-items:center;">
-              <strong style="font-size:14px;">${TB.utils.esc(meta.label)}</strong>
+              ${iconHtml}<strong style="font-size:14px;">${TB.utils.esc(meta.label)}</strong>
               ${statusBadge}
+              ${isHighLev ? '<span class="badge badge-red" style="font-size:9px;">RISK</span>' : ''}
             </div>
             <button class="btn btn-sm ${active ? 'btn-danger' : 'btn-success'}" data-action="toggle-group" data-group="${TB.utils.esc(g)}">
               ${active ? 'Disable' : 'Activate'}

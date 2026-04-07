@@ -95,7 +95,7 @@ cp .env.example .env
     "cache_ttl_sec": 900,                        // Sentiment cache TTL (15 min)
     "weight": 0.3,                               // Sentiment weight in decisions
     "hard_block_threshold": -0.7                  // Block threshold (strongly negative)
-  }
+  },
 }
 ```
 
