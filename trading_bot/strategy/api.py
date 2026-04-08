@@ -179,7 +179,19 @@ class StrategyAPI:
             interval_ms = self._interval_to_ms(interval)
             start_ms = now_ms - interval_ms * count
             try:
-                return self._rest.get_candles(coin, interval, start_ms, now_ms)
+                candles = self._rest.get_candles(coin, interval, start_ms, now_ms)
+                if candles:
+                    # Persist to DB so the fallback path stays warm across cache misses
+                    try:
+                        rows = [
+                            (coin, interval, c.time_open, c.open, c.high, c.low,
+                             c.close, c.volume, c.n_trades)
+                            for c in candles
+                        ]
+                        self._db.insert_candles(rows)
+                    except Exception:
+                        log.debug("Failed to persist fetched candles for %s/%s", coin, interval)
+                return candles
             except Exception:
                 log.exception(f"Failed to fetch candles for {coin}/{interval}")
 

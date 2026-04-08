@@ -77,58 +77,102 @@ CREATE TABLE IF NOT EXISTS backtest_history (
 
 
 class Database:
+    """Thread-safe SQLite wrapper.
+
+    Each thread gets its own ``sqlite3.Connection``.  The engine thread calls
+    ``open()`` once (which also creates the schema).  Any other thread (e.g.
+    the FastAPI/uvicorn thread) receives a lazily-opened connection the first
+    time it calls a query method — this avoids the ``AssertionError: conn is
+    None`` crash that occurred when the web thread tried to reuse the engine
+    thread's connection after it had been closed.
+
+    WAL mode is set per-connection; because WAL is a file-level journal mode
+    the ``PRAGMA journal_mode=WAL`` call on subsequent connections is a no-op
+    that simply confirms the mode is already active.
+    """
+
     def __init__(self, db_path: str):
         resolved = Path(db_path).resolve()
         resolved.parent.mkdir(parents=True, exist_ok=True)
         self.path = str(resolved)
-        self.conn: sqlite3.Connection | None = None
+        self._local = threading.local()
+        # _open tracks whether the primary (engine) connection has been opened.
+        # Secondary threads use this flag to decide whether to open their own.
+        self._open = False
         self._lock = threading.RLock()
 
+    # ------------------------------------------------------------------
+    # Backwards-compatible property so existing code that reads ``db.conn``
+    # (e.g. ``if not self.db.conn``) continues to work correctly.
+    # ------------------------------------------------------------------
+
+    @property
+    def conn(self) -> sqlite3.Connection | None:
+        return getattr(self._local, "conn", None)
+
+    def _get_conn(self) -> sqlite3.Connection:
+        """Return the connection for the current thread, opening one if needed."""
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn is None:
+            if not self._open:
+                raise AssertionError(
+                    "Database.open() has not been called yet — cannot query before the engine initialises the DB."
+                )
+            # Secondary thread: open a per-thread connection.
+            conn = sqlite3.connect(self.path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.row_factory = sqlite3.Row
+            self._local.conn = conn
+            log.debug("Database: opened per-thread connection for thread %s", threading.current_thread().name)
+        return conn
+
     def open(self) -> None:
-        self.conn = sqlite3.connect(self.path, check_same_thread=False)
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=NORMAL")
+        """Open the primary connection (called once by the engine thread)."""
+        conn = sqlite3.connect(self.path, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         # M-10: Auto-checkpoint WAL to prevent unbounded file growth
-        self.conn.execute("PRAGMA wal_autocheckpoint=1000")
-        self.conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA wal_autocheckpoint=1000")
+        conn.row_factory = sqlite3.Row
+        self._local.conn = conn
+        self._open = True
         self._create_tables()
-        log.info(f"Database opened: {self.path}")
+        log.info("Database opened: %s", self.path)
 
     def _create_tables(self) -> None:
-        assert self.conn is not None
-        self.conn.executescript(SCHEMA)
-        self.conn.commit()
+        conn = self._get_conn()
+        conn.executescript(SCHEMA)
+        conn.commit()
 
     def close(self) -> None:
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        """Close the calling thread's connection."""
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn:
+            conn.close()
+            self._local.conn = None
+            self._open = False
             log.info("Database closed")
 
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
-        assert self.conn is not None
         with self._lock:
-            return self.conn.execute(sql, params)
+            return self._get_conn().execute(sql, params)
 
     def executemany(self, sql: str, params_list: list[tuple]) -> None:
-        assert self.conn is not None
         with self._lock:
-            self.conn.executemany(sql, params_list)
+            self._get_conn().executemany(sql, params_list)
 
     def commit(self) -> None:
-        assert self.conn is not None
         with self._lock:
-            self.conn.commit()
+            self._get_conn().commit()
 
     def fetchone(self, sql: str, params: tuple = ()) -> sqlite3.Row | None:
-        assert self.conn is not None
         with self._lock:
-            return self.conn.execute(sql, params).fetchone()
+            return self._get_conn().execute(sql, params).fetchone()
 
     def fetchall(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
-        assert self.conn is not None
         with self._lock:
-            return self.conn.execute(sql, params).fetchall()
+            return self._get_conn().execute(sql, params).fetchall()
 
     # --- Strategy state ---
 

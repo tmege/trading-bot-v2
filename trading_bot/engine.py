@@ -139,6 +139,7 @@ class Engine:
         self.ws.on_book = self._on_book
         self.ws.on_fill = self._on_fills
         self.ws.on_order_update = self._on_order_updates
+        self.ws.on_candle = self._on_candle
 
         self.ws.subscribe_all_mids()
         if address:
@@ -471,6 +472,38 @@ class Engine:
                 except Exception:
                     log.exception(f"Strategy {info.name} error in on_book — suspended")
                     info.errored = True
+
+    def _on_candle(self, coin: str, candle: "Candle") -> None:
+        # Persist the candle to the database so the DB fallback path stays warm
+        if self.db:
+            try:
+                self.db.insert_candles([
+                    (coin, "1h", candle.time_open,
+                     candle.open, candle.high, candle.low,
+                     candle.close, candle.volume, candle.n_trades)
+                ])
+            except Exception:
+                log.debug("Failed to persist WS candle for %s", coin)
+
+        # Forward the candle into each strategy's candle cache so `get_candles`
+        # cache hits remain fresh without requiring a REST round-trip.
+        for info in self._strategies:
+            if info.errored or info.disabled or not info.api:
+                continue
+            if coin in info.coins:
+                try:
+                    cache = info.api._candle_cache
+                    cached = cache.get(coin, "1h")
+                    if cached is not None:
+                        # Replace or append: update last entry if same open-time,
+                        # otherwise append (candle is still building within its hour).
+                        if cached and cached[-1].time_open == candle.time_open:
+                            updated = cached[:-1] + [candle]
+                        else:
+                            updated = cached + [candle]
+                        cache.put(coin, "1h", updated)
+                except Exception:
+                    log.debug("Failed to update candle cache for %s strategy %s", coin, info.name)
 
     def _on_fills(self, fills: list[Fill]) -> None:
         if self.order_manager:

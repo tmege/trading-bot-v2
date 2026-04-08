@@ -16,40 +16,28 @@
     "reload_interval_sec": 5,
     "active": [
       {
-        "file": "sol_breakout_uniform_1h.py",
-        "coins": ["SOL"],
-        "paper_mode": true,
-        "group": "4-coin-uniform"
-      },
-      {
-        "file": "bnb_breakout_uniform_1h.py",
-        "coins": ["BNB"],
-        "paper_mode": true,
-        "group": "4-coin-uniform"
-      },
-      {
-        "file": "xrp_breakout_uniform_1h.py",
-        "coins": ["XRP"],
-        "paper_mode": true,
-        "group": "4-coin-uniform"
-      },
-      {
-        "file": "doge_breakout_uniform_1h.py",
-        "coins": ["DOGE"],
-        "paper_mode": true,
-        "group": "4-coin-uniform"
-      },
-      {
-        "file": "btc_leveraged_breakout.py",
+        "file": "btc_inside_bar_breakout_1h.py",
         "coins": ["BTC"],
         "paper_mode": true,
-        "group": "high-leverage"
+        "group": "4-strat-mix"
       },
       {
-        "file": "eth_leveraged_breakout.py",
-        "coins": ["ETH"],
+        "file": "sol_breakout_normal_1h.py",
+        "coins": ["SOL"],
         "paper_mode": true,
-        "group": "high-leverage"
+        "group": "4-strat-mix"
+      },
+      {
+        "file": "xrp_mean_reversion_bb_1h.py",
+        "coins": ["XRP"],
+        "paper_mode": true,
+        "group": "4-strat-mix"
+      },
+      {
+        "file": "bnb_breakout_relaxed_1h.py",
+        "coins": ["BNB"],
+        "paper_mode": true,
+        "group": "4-strat-mix"
       }
     ]
   },
