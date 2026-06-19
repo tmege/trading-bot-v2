@@ -1,6 +1,6 @@
 # Trading Bot v2
 
-An automated cryptocurrency trading bot for perpetual contracts on **Hyperliquid** (decentralized exchange). Features a native desktop interface, concurrent multi-strategy execution with hot-reload capability, paper trading, backtesting, and AI-driven sentiment analysis via Claude.
+Trading Bot Dashboard (educational purpose only) — Automated cryptocurrency trading bot for perpetual contracts on Hyperliquid, featuring multi-strategy execution, backtesting with Monte Carlo simulation, paper trading, 50+ technical indicators, and AI-driven sentiment analysis via Claude API. Built with Python, FastAPI, and SQLite, with a native desktop interface via pywebview.
 
 ## Features
 
